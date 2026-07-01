@@ -3,7 +3,7 @@
 {% block title %}Signal Overview{% endblock %}
 
 {% block content %}
-<div x-data="dashboardActions()" class="space-y-10">
+<div x-data="dashboardActions()" x-init="init()" class="space-y-10">
 <header>
   <p class="text-sm font-medium text-stone-500">Overview</p>
   <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Agent autonomy</h1>
@@ -63,10 +63,6 @@
     <div>
       <h2 class="font-semibold">Suggestions</h2>
       <p class="mt-1 text-sm text-stone-500">Pending rule consolidation ideas.</p>
-    </div>
-    <div class="flex w-full gap-2 lg:w-auto">
-      <input x-model="apiKey" type="password" placeholder="Signal API key" class="h-10 min-w-0 flex-1 border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950 lg:w-72" />
-      <button @click="saveKey()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Use key</button>
     </div>
   </div>
   <p x-show="message" x-text="message" class="border-t border-stone-100 py-3 text-sm text-stone-600"></p>
@@ -136,13 +132,14 @@
     return {
       apiKey: sessionStorage.getItem("signal_api_key") || "",
       message: "",
-      saveKey() {
-        sessionStorage.setItem("signal_api_key", this.apiKey);
-        this.message = "API key saved for this browser session.";
+      init() {
+        if (!this.apiKey) {
+          this.message = "Please configure your API key in Settings to use dashboard features.";
+        }
       },
       async acceptSuggestion(suggestionId) {
         if (!this.apiKey) {
-          this.message = "Enter your Signal API key first.";
+          this.message = "Please go to Settings to configure your API key.";
           return;
         }
         const response = await fetch(`/v1/consolidation/${suggestionId}/accept`, {

@@ -4,15 +4,9 @@
 
 {% block content %}
 <div x-data='ruleActions({{ rules|tojson }})' class="space-y-8">
-  <header class="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-    <div>
-      <p class="text-sm font-medium text-stone-500">Rules</p>
-      <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Rules library</h1>
-    </div>
-    <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-      <input x-model="apiKey" type="password" placeholder="Signal API key" class="h-10 min-w-0 flex-1 border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950 lg:w-72" />
-      <button @click="saveKey()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Use key</button>
-    </div>
+  <header>
+    <p class="text-sm font-medium text-stone-500">Rules</p>
+    <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Rules library</h1>
   </header>
 
   <div class="flex flex-col gap-3 border-y border-stone-200 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -101,10 +95,6 @@
       get allSelected() {
         return this.rules.length > 0 && this.selected.length === this.rules.length;
       },
-      saveKey() {
-        sessionStorage.setItem("signal_api_key", this.apiKey);
-        this.message = "API key saved for this browser session.";
-      },
       headers() {
         return {
           "Authorization": `Bearer ${this.apiKey}`,
@@ -113,7 +103,7 @@
       },
       requireKey() {
         if (this.apiKey) return true;
-        this.message = "Enter your Signal API key first.";
+        this.message = "Please configure your API key in Settings first.";
         return false;
       },
       statusClass(status) {

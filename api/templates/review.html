@@ -4,15 +4,9 @@
 
 {% block content %}
 <div x-data="reviewQueue()" x-init="load()" class="space-y-8">
-  <header class="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-    <div>
-      <p class="text-sm font-medium text-stone-500">Review</p>
-      <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Decision queue</h1>
-    </div>
-    <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-      <input x-model="apiKey" type="password" placeholder="Signal API key" class="h-10 min-w-0 flex-1 border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950 lg:w-72" />
-      <button @click="saveKey()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Use key</button>
-    </div>
+  <header>
+    <p class="text-sm font-medium text-stone-500">Review</p>
+    <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Decision queue</h1>
   </header>
 
   <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
@@ -27,7 +21,7 @@
     </div>
   </section>
 
-  <p x-show="!apiKey" class="text-sm text-stone-500">Enter your Signal API key to load your organization’s review queue.</p>
+  <p x-show="!apiKey" class="text-sm text-stone-500">Please configure your API key in <a href="/dashboard/settings" class="font-semibold underline-offset-4 hover:underline">Settings</a> to load your organization's review queue.</p>
   <p x-show="apiKey && loading" x-cloak class="text-sm text-stone-500">Loading decisions...</p>
   <p x-show="apiKey && !loading && items.length === 0" x-cloak class="text-sm text-stone-500">No decisions waiting.</p>
 
@@ -148,11 +142,6 @@
           "Content-Type": "application/json",
         };
       },
-      saveKey() {
-        sessionStorage.setItem("signal_api_key", this.apiKey);
-        this.message = "API key saved for this browser session.";
-        this.load();
-      },
       async failureMessage(response, fallback) {
         try {
           const data = await response.json();
@@ -167,7 +156,10 @@
         return fallback;
       },
       async load() {
-        if (!this.apiKey) return;
+        if (!this.apiKey) {
+          this.message = "";
+          return;
+        }
         this.loading = true;
         const response = await fetch("/admin/review", { headers: this.headers() });
         this.loading = false;
@@ -181,7 +173,7 @@
       },
       async post(path, body = {}) {
         if (!this.apiKey) {
-          this.message = "Enter your Signal API key first.";
+          this.message = "Please configure your API key in Settings first.";
           return false;
         }
         this.message = "Working...";

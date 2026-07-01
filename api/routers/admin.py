@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import secrets
+import string
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
@@ -15,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from api.auth import AuthContext, require_api_key
 from api.config import settings
 from api.database import get_session
-from api.models import ConsolidationSuggestion, Escalation, Organization, PolicyCheckLog, Rule, RuleConflict
+from api.models import ApiKey, ConsolidationSuggestion, Escalation, Organization, PolicyCheckLog, Rule, RuleConflict
 from api.services.conflict_service import ConflictService, ConflictWarning
 from api.services.escalation_pipeline import slack_delivery_available
 from api.services.review_service import (
@@ -53,6 +56,14 @@ class DashboardSettingsUpdate(BaseModel):
     slack_channel_id: str | None = None
 
 
+class ApiKeyGenerateRequest(BaseModel):
+    name: str = Field(default="Dashboard Generated", min_length=1, max_length=100)
+
+
+class OrganizationSetupRequest(BaseModel):
+    organization_name: str = Field(min_length=1, max_length=200)
+
+
 def _app_tz() -> ZoneInfo:
     return ZoneInfo(settings.app_timezone)
 
@@ -61,6 +72,19 @@ def _as_local(value: datetime) -> datetime:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(_app_tz())
+
+
+def _generate_api_key() -> str:
+    """Generate a new API key with the standard prefix and random suffix."""
+    KEY_PREFIX = "sk_live_"
+    KEY_RANDOM_LENGTH = 32
+    alphabet = string.ascii_letters + string.digits
+    return KEY_PREFIX + "".join(secrets.choice(alphabet) for _ in range(KEY_RANDOM_LENGTH))
+
+
+def _hash_api_key(api_key: str) -> str:
+    """Hash an API key for secure storage."""
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
 
 
 def _today_start_utc() -> datetime:
@@ -865,6 +889,97 @@ async def update_settings(
 
     await session.commit()
     return await get_settings(session=session, auth=auth)
+
+
+@router.post("/admin/setup")
+async def setup_organization(
+    request: OrganizationSetupRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """
+    Public endpoint for first-time setup. Creates a new organization and generates the first API key.
+    No authentication required.
+    """
+    # Create new organization
+    org = Organization(
+        name=request.organization_name,
+        slack_notifications_enabled=False,
+    )
+    session.add(org)
+    await session.flush()
+
+    # Generate first API key for the organization
+    api_key = _generate_api_key()
+    api_key_record = ApiKey(
+        org_id=org.id,
+        key_hash=_hash_api_key(api_key),
+        key_prefix=api_key[:8],
+        name="Initial Setup Key",
+    )
+    session.add(api_key_record)
+    await session.commit()
+
+    return {
+        "organization_id": str(org.id),
+        "organization_name": org.name,
+        "api_key": api_key,
+        "key_prefix": api_key[:8],
+        "message": "Organization created successfully! This is the only time you will see the full API key. Save it securely.",
+    }
+
+
+@router.post("/admin/api-keys/generate")
+async def generate_api_key(
+    request: ApiKeyGenerateRequest,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_key),
+) -> dict[str, Any]:
+    """Generate a new API key for the authenticated organization."""
+    api_key = _generate_api_key()
+    record = ApiKey(
+        org_id=auth.org_id,
+        key_hash=_hash_api_key(api_key),
+        key_prefix=api_key[:8],
+        name=request.name,
+    )
+    session.add(record)
+    await session.commit()
+
+    return {
+        "api_key": api_key,
+        "key_prefix": api_key[:8],
+        "name": request.name,
+        "created_at": _serialize(record.created_at),
+        "message": "API key generated successfully. This is the only time you will see the full key. Save it securely.",
+    }
+
+
+@router.get("/admin/api-keys")
+async def list_api_keys(
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_key),
+) -> dict[str, Any]:
+    """List all API keys for the authenticated organization (without the actual keys)."""
+    api_keys = (
+        await session.execute(
+            select(ApiKey)
+            .where(ApiKey.org_id == auth.org_id)
+            .order_by(ApiKey.created_at.desc())
+        )
+    ).scalars().all()
+
+    return {
+        "items": [
+            {
+                "id": str(key.id),
+                "name": key.name,
+                "key_prefix": key.key_prefix,
+                "created_at": _serialize(key.created_at),
+                "last_used_at": _serialize(key.last_used_at),
+            }
+            for key in api_keys
+        ]
+    }
 
 
 @router.get("/admin/rules")
