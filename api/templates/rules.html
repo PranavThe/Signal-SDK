@@ -25,59 +25,70 @@
   <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
 
   <section>
-    <div class="overflow-x-auto">
-      <table class="min-w-[1200px] border-y border-stone-200 text-sm">
-        <thead class="border-b border-stone-200 text-left text-stone-500">
-          <tr>
-            <th class="w-10 py-3 pr-4">
-              <input type="checkbox" :checked="allSelected" @change="toggleAll($event.target.checked)" class="h-4 w-4 accent-stone-950" />
-            </th>
-            <th class="w-[360px] px-4 py-3 font-medium">Condition</th>
-            <th class="w-[320px] px-4 py-3 font-medium">Action</th>
-            <th class="px-4 py-3 font-medium">Status</th>
-            <th class="px-4 py-3 font-medium">Confidence</th>
-            <th class="px-4 py-3 font-medium">Triggers</th>
-            <th class="px-4 py-3 font-medium">Last Triggered</th>
-            <th class="px-4 py-3 font-medium">Created</th>
-            <th class="py-3 pl-4 font-medium"></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-stone-100">
-          <template x-for="rule in rules" :key="rule.id">
-            <tr class="align-top">
-              <td class="py-4 pr-4">
-                <input type="checkbox" :checked="isSelected(rule.id)" @change="toggleSelected(rule.id, $event.target.checked)" class="h-4 w-4 accent-stone-950" />
-              </td>
-              <td class="w-[360px] px-4 py-4">
-                <a :href="`/dashboard/rules/${rule.id}`" class="font-medium text-stone-950 hover:underline" x-text="rule.condition"></a>
-              </td>
-              <td class="w-[320px] px-4 py-4 text-stone-600" x-text="rule.action"></td>
-              <td class="px-4 py-4">
-                <span :class="statusClass(rule.status)" class="whitespace-nowrap text-xs font-semibold uppercase tracking-wide" x-text="rule.status"></span>
-              </td>
-              <td class="px-4 py-4 text-stone-600" x-text="rule.confidence"></td>
-              <td class="px-4 py-4 text-stone-600" x-text="rule.trigger_count"></td>
-              <td class="px-4 py-4 text-stone-600" x-text="rule.last_triggered"></td>
-              <td class="px-4 py-4 text-stone-600" x-text="rule.created"></td>
-              <td class="py-4 pl-4">
-                <div class="flex items-center gap-3">
-                  <button
-                    @click="toggleActive(rule)"
-                    :disabled="!canToggle(rule)"
-                    class="text-xs font-semibold text-stone-950 underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:text-stone-300 disabled:no-underline"
-                    :aria-label="rule.status === 'active' ? 'Pause rule' : 'Activate rule'"
-                    x-text="rule.status === 'active' ? 'Pause' : 'Activate'"
-                  ></button>
-                  <button @click="deleteRules([rule.id])" class="text-xs font-semibold text-red-700 underline-offset-4 hover:underline">Delete</button>
+    <div class="mb-4 flex items-center gap-2 border-y border-stone-200 py-3">
+      <input type="checkbox" :checked="allSelected" @change="toggleAll($event.target.checked)" class="h-4 w-4 accent-stone-950" />
+      <label class="text-sm text-stone-600">Select all</label>
+    </div>
+
+    <div class="space-y-3">
+      <template x-for="rule in rules" :key="rule.id">
+        <div class="border border-stone-200 bg-white">
+          <!-- Header with checkbox and status -->
+          <div class="flex items-start gap-4 border-b border-stone-200 bg-stone-50 p-4">
+            <input type="checkbox" :checked="isSelected(rule.id)" @change="toggleSelected(rule.id, $event.target.checked)" class="mt-0.5 h-4 w-4 accent-stone-950" />
+            <div class="flex min-w-0 flex-1 items-start justify-between gap-4">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span :class="statusClass(rule.status)" class="text-xs font-semibold uppercase tracking-wide" x-text="rule.status"></span>
+                  <span class="text-xs text-stone-400">·</span>
+                  <span class="text-xs text-stone-500" x-text="rule.confidence + ' confidence'"></span>
+                  <span class="text-xs text-stone-400">·</span>
+                  <span class="text-xs text-stone-500" x-text="rule.trigger_count + ' triggers'"></span>
                 </div>
-              </td>
-            </tr>
-          </template>
-          <tr x-show="rules.length === 0" x-cloak>
-            <td colspan="9" class="px-4 py-8 text-center text-stone-500">No rules yet.</td>
-          </tr>
-        </tbody>
-      </table>
+              </div>
+              <div class="flex shrink-0 items-center gap-3">
+                <button
+                  @click="toggleActive(rule)"
+                  :disabled="!canToggle(rule)"
+                  class="text-xs font-semibold text-stone-950 underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:text-stone-300 disabled:no-underline"
+                  :aria-label="rule.status === 'active' ? 'Pause rule' : 'Activate rule'"
+                  x-text="rule.status === 'active' ? 'Pause' : 'Activate'"
+                ></button>
+                <button @click="deleteRules([rule.id])" class="text-xs font-semibold text-red-700 underline-offset-4 hover:underline">Delete</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Rule content -->
+          <a :href="`/dashboard/rules/${rule.id}`" class="block p-5">
+            <div class="grid gap-4 lg:grid-cols-[1fr_auto_1fr]">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">When</p>
+                <p class="mt-2 text-sm font-medium leading-relaxed text-stone-950" x-text="rule.condition"></p>
+              </div>
+              <div class="hidden items-center lg:flex">
+                <svg class="h-5 w-5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+                </svg>
+              </div>
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Do</p>
+                <p class="mt-2 text-sm leading-relaxed text-stone-700" x-text="rule.action"></p>
+              </div>
+            </div>
+
+            <!-- Metadata footer -->
+            <div class="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-stone-100 pt-3 text-xs text-stone-500">
+              <span x-show="rule.last_triggered" x-text="'Last triggered: ' + rule.last_triggered"></span>
+              <span x-text="'Created: ' + rule.created"></span>
+            </div>
+          </a>
+        </div>
+      </template>
+
+      <div x-show="rules.length === 0" x-cloak class="border border-stone-200 bg-stone-50 py-12 text-center">
+        <p class="text-sm text-stone-500">No rules yet.</p>
+      </div>
     </div>
   </section>
 </div>
@@ -85,7 +96,7 @@
 <script>
   function ruleActions(initialRules) {
     return {
-      apiKey: sessionStorage.getItem("signal_api_key") || "",
+      hasOrg: {{ 'true' if current_org else 'false' }},
       message: "",
       rules: initialRules,
       selected: [],
@@ -97,13 +108,12 @@
       },
       headers() {
         return {
-          "Authorization": `Bearer ${this.apiKey}`,
           "Content-Type": "application/json",
         };
       },
-      requireKey() {
-        if (this.apiKey) return true;
-        this.message = "Please configure your API key in Settings first.";
+      requireOrg() {
+        if (this.hasOrg) return true;
+        this.message = "Select an organization in Settings first.";
         return false;
       },
       statusClass(status) {
@@ -150,11 +160,12 @@
         ].filter(Boolean).join(" ");
       },
       async updateStatus(rule, status) {
-        if (!this.requireKey()) return;
+        if (!this.requireOrg()) return;
         const previous = rule.status;
         rule.status = status;
-        const response = await fetch(`/v1/rules/${rule.id}`, {
+        const response = await fetch(`/admin/rules/${rule.id}`, {
           method: "PATCH",
+          credentials: "include",
           headers: this.headers(),
           body: JSON.stringify({ status }),
         });
@@ -173,11 +184,12 @@
         await this.deleteRules(this.selected);
       },
       async deleteRules(ruleIds) {
-        if (!this.requireKey() || ruleIds.length === 0) return;
+        if (!this.requireOrg() || ruleIds.length === 0) return;
         const label = ruleIds.length === 1 ? "this rule" : `${ruleIds.length} rules`;
         if (!window.confirm(`Delete ${label}?`)) return;
-        const response = await fetch("/v1/rules/delete", {
+        const response = await fetch("/admin/rules/delete", {
           method: "POST",
+          credentials: "include",
           headers: this.headers(),
           body: JSON.stringify({ rule_ids: ruleIds }),
         });
