@@ -9,14 +9,13 @@
     <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Rules library</h1>
   </header>
 
-  <div class="flex flex-col gap-3 border-y border-stone-200 py-3 sm:flex-row sm:items-center sm:justify-between">
+  <div x-show="selectedCount > 0" x-cloak class="flex flex-col gap-3 border-y border-stone-200 py-3 sm:flex-row sm:items-center sm:justify-between">
     <p class="text-sm text-stone-600">
       <span x-text="selectedCount"></span> selected
     </p>
     <button
       @click="deleteSelected()"
-      :disabled="selectedCount === 0"
-      class="h-9 text-sm font-semibold text-red-700 underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:text-stone-300 disabled:no-underline"
+      class="h-9 text-sm font-semibold text-red-700 underline-offset-4 hover:underline"
     >
       Delete selected
     </button>
@@ -25,7 +24,7 @@
   <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
 
   <section>
-    <div class="mb-4 flex items-center gap-2 border-y border-stone-200 py-3">
+    <div x-show="selectedCount > 0" x-cloak class="mb-4 flex items-center gap-2 border-y border-stone-200 py-3">
       <input type="checkbox" :checked="allSelected" @change="toggleAll($event.target.checked)" class="h-4 w-4 accent-stone-950" />
       <label class="text-sm text-stone-600">Select all</label>
     </div>

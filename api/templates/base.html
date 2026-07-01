@@ -10,19 +10,27 @@
   </head>
   <body class="bg-white text-stone-950 antialiased">
     <div class="min-h-screen lg:flex">
-      <aside class="border-b border-stone-200 lg:fixed lg:inset-y-0 lg:left-0 lg:w-64 lg:border-b-0 lg:border-r">
+      <aside class="border-b border-stone-200 lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-64 lg:flex-col lg:border-b-0 lg:border-r">
         <div class="flex h-16 items-start justify-start px-5 pt-4 lg:h-20 lg:pt-5">
           <a href="/dashboard" class="block">
             <img src="/static/signal-logo.png" alt="Signal" class="h-8 w-auto max-w-[148px] object-contain object-left" style="filter: invert(1);" />
           </a>
         </div>
-        <nav class="flex gap-5 overflow-x-auto px-5 pb-4 lg:block lg:space-y-1 lg:overflow-visible">
+        <nav class="flex gap-5 overflow-x-auto px-5 pb-4 lg:block lg:flex-1 lg:space-y-1 lg:overflow-visible">
           <a href="/dashboard" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'overview' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Overview</a>
           <a href="/dashboard/review" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'review' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Review</a>
           <a href="/dashboard/rules" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'rules' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Rules</a>
           <a href="/dashboard/escalations" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'escalations' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Escalations</a>
           <a href="/dashboard/settings" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'settings' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Settings</a>
         </nav>
+        <div x-data="dashboardShell('{{ current_org.org_name if current_org else '' }}')" x-init="init()" class="hidden border-t border-stone-200 px-5 py-4 lg:block">
+          <div class="space-y-2 text-sm">
+            <p class="text-stone-500">{{ dashboard_user.email if dashboard_user else '' }}</p>
+            <a href="/dashboard/settings" class="block font-semibold text-stone-950 underline-offset-4 hover:underline" x-show="orgName" x-text="orgName"></a>
+            <a href="/dashboard/settings" class="block font-semibold text-stone-500 underline-offset-4 hover:underline" x-show="!orgName">Select organization</a>
+            <button @click="logout()" class="block font-semibold text-stone-500 underline-offset-4 hover:underline">Sign out</button>
+          </div>
+        </div>
       </aside>
 
       <main class="min-w-0 lg:ml-64 lg:flex-1">
@@ -31,5 +39,42 @@
         </div>
       </main>
     </div>
+    <script>
+      function dashboardShell(initialOrgName) {
+        return {
+          orgName: initialOrgName || sessionStorage.getItem("signal_org_name") || "",
+          init() {
+            window.addEventListener("signal-org-changed", (event) => {
+              if (event.detail?.name) this.orgName = event.detail.name;
+            });
+          },
+          async logout() {
+            await fetch("/dashboard/logout", { method: "POST", credentials: "include" });
+            sessionStorage.removeItem("signal_org_name");
+            window.location.href = "/login?signed_out=1";
+          },
+        };
+      }
+
+      window.signalSelectOrg = async function(apiKey, options = {}) {
+        const response = await fetch("/dashboard/org-session", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ api_key: apiKey }),
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        const org = data.organization || {};
+        window.signalRememberOrg(org);
+        if (options.reload !== false) window.location.reload();
+        return org;
+      };
+
+      window.signalRememberOrg = function(org) {
+        if (org?.name) sessionStorage.setItem("signal_org_name", org.name);
+        window.dispatchEvent(new CustomEvent("signal-org-changed", { detail: org || {} }));
+      };
+    </script>
   </body>
 </html>
