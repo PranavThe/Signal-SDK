@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block title %}Signal Review{% endblock %}
+
+{% block content %}
+<div x-data="reviewQueue()" x-init="load()" class="space-y-8">
+  <header class="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+    <div>
+      <p class="text-sm font-medium text-stone-500">Review</p>
+      <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Decision queue</h1>
+    </div>
+    <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+      <input x-model="apiKey" type="password" placeholder="Signal API key" class="h-10 min-w-0 flex-1 border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950 lg:w-72" />
+      <button @click="saveKey()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Use key</button>
+    </div>
+  </header>
+
+  <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+
+  <section class="border-y border-stone-200 py-5">
+    <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+      <div>
+        <h2 class="font-semibold">Open decisions</h2>
+        <p class="mt-1 text-sm text-stone-500">Unresolved escalations and proposed rules.</p>
+      </div>
+      <button @click="load()" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Refresh</button>
+    </div>
+  </section>
+
+  <p x-show="!apiKey" class="text-sm text-stone-500">Enter your Signal API key to load your organization’s review queue.</p>
+  <p x-show="apiKey && loading" x-cloak class="text-sm text-stone-500">Loading decisions...</p>
+  <p x-show="apiKey && !loading && items.length === 0" x-cloak class="text-sm text-stone-500">No decisions waiting.</p>
+
+  <div class="divide-y divide-stone-200 border-y border-stone-200" x-show="items.length > 0" x-cloak>
+    <template x-for="item in items" :key="item.id">
+      <section class="py-6">
+        <div class="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span :class="stageClass(item.stage)" class="text-xs font-semibold uppercase tracking-wide" x-text="stageLabel(item)"></span>
+              <span class="text-sm text-stone-500" x-text="`${item.agent_id} · ${item.created}`"></span>
+            </div>
+            <h2 class="mt-3 text-lg font-semibold tracking-tight text-stone-950" x-text="item.question"></h2>
+          </div>
+          <div class="flex shrink-0 gap-4" x-show="item.stage === 'decision'">
+            <button @click="decide(item.id, 'approve')" class="text-sm font-semibold text-emerald-700 underline-offset-4 hover:underline">Approve</button>
+            <button @click="decide(item.id, 'reject')" class="text-sm font-semibold text-red-700 underline-offset-4 hover:underline">Reject</button>
+          </div>
+        </div>
+
+        <div class="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div class="space-y-5">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Context</p>
+              <p class="mt-2 text-sm leading-6 text-stone-800" x-text="item.context"></p>
+            </div>
+
+            <div x-show="Object.keys(item.metadata || {}).length > 0">
+              <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Metadata</p>
+              <pre class="mt-2 overflow-auto border-y border-stone-200 py-3 text-xs leading-5 text-stone-700" x-text="formatJson(item.metadata)"></pre>
+            </div>
+
+            <template x-if="item.similar_decisions && item.similar_decisions.length > 0">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Similar past decisions</p>
+                <div class="mt-2 divide-y divide-stone-100 border-y border-stone-200">
+                  <template x-for="decision in item.similar_decisions" :key="`${item.id}-${decision.context}`">
+                    <div class="py-3">
+                      <p class="text-sm font-medium text-stone-950" x-text="`${decision.human_decision} · ${decision.time_ago} · ${decision.similarity}`"></p>
+                      <p class="mt-1 text-sm text-stone-600" x-text="decision.context"></p>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <aside class="space-y-5 border-t border-stone-200 pt-5 lg:border-t-0 lg:border-l lg:pl-6 lg:pt-0">
+            <template x-if="item.stage === 'scope'">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Decision recorded</p>
+                <p class="mt-2 text-sm text-stone-700" x-text="`Human decision: ${item.human_decision}`"></p>
+                <div class="mt-4 flex flex-wrap gap-4">
+                  <button @click="applyBroadly(item.id, true)" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Make it a rule</button>
+                  <button @click="applyBroadly(item.id, false)" class="text-sm font-semibold text-stone-600 underline-offset-4 hover:underline">One-time only</button>
+                </div>
+              </div>
+            </template>
+
+            <template x-if="item.rule">
+              <div class="space-y-5">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Proposed rule</p>
+                  <p class="mt-3 text-sm font-semibold text-stone-950">WHEN</p>
+                  <p class="mt-1 text-sm leading-6 text-stone-700" x-text="item.rule.condition"></p>
+                  <p class="mt-4 text-sm font-semibold text-stone-950">DO</p>
+                  <p class="mt-1 text-sm leading-6 text-stone-700" x-text="item.rule.action"></p>
+                  <p class="mt-3 text-xs text-stone-500" x-text="`${item.rule.confidence} confidence · ${item.rule.status}`"></p>
+                  <p x-show="item.rule.exceptions_note" class="mt-3 text-sm text-stone-600" x-text="item.rule.exceptions_note"></p>
+                </div>
+
+                <template x-if="item.rule.conflicts && item.rule.conflicts.length > 0">
+                  <div class="border-l-2 border-amber-500 pl-3">
+                    <p class="text-sm font-semibold text-amber-700">Potential conflict</p>
+                    <template x-for="conflict in item.rule.conflicts" :key="conflict.existing_rule_id">
+                      <div class="mt-2">
+                        <p class="text-sm text-stone-800" x-text="`${conflict.existing_condition} → ${conflict.existing_action}`"></p>
+                        <p class="mt-1 text-sm text-stone-500" x-text="conflict.explanation"></p>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+
+                <div class="flex flex-wrap gap-4">
+                  <button x-show="!item.rule.conflicts || item.rule.conflicts.length === 0" @click="approveRule(item.rule.id)" class="text-sm font-semibold text-emerald-700 underline-offset-4 hover:underline">Approve rule</button>
+                  <button @click="toggleEdit(item.rule.id)" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Edit rule</button>
+                  <button @click="discardRule(item.rule.id)" class="text-sm font-semibold text-red-700 underline-offset-4 hover:underline">Discard</button>
+                </div>
+
+                <div x-show="editingRuleId === item.rule.id" x-cloak class="space-y-3">
+                  <textarea x-model="edits[item.rule.id]" rows="4" placeholder="Describe what should change about this rule." class="w-full resize-y border-y border-stone-200 bg-transparent py-3 text-sm outline-none focus:border-stone-950"></textarea>
+                  <div class="flex gap-4">
+                    <button @click="submitEdit(item.rule.id)" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Update rule</button>
+                    <button @click="editingRuleId = null" class="text-sm font-semibold text-stone-500 underline-offset-4 hover:underline">Cancel</button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </aside>
+        </div>
+      </section>
+    </template>
+  </div>
+</div>
+
+<script>
+  function reviewQueue() {
+    return {
+      apiKey: sessionStorage.getItem("signal_api_key") || "",
+      items: [],
+      loading: false,
+      message: "",
+      editingRuleId: null,
+      edits: {},
+      headers() {
+        return {
+          "Authorization": `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        };
+      },
+      saveKey() {
+        sessionStorage.setItem("signal_api_key", this.apiKey);
+        this.message = "API key saved for this browser session.";
+        this.load();
+      },
+      async failureMessage(response, fallback) {
+        try {
+          const data = await response.json();
+          const detail = data?.detail;
+          if (typeof detail === "string") return detail;
+          if (detail?.message) {
+            const conflict = (detail.conflicts || [])[0];
+            if (conflict) return `${detail.message} ${conflict.existing_condition} → ${conflict.existing_action}. ${conflict.explanation}`;
+            return detail.message;
+          }
+        } catch {}
+        return fallback;
+      },
+      async load() {
+        if (!this.apiKey) return;
+        this.loading = true;
+        const response = await fetch("/admin/review", { headers: this.headers() });
+        this.loading = false;
+        if (!response.ok) {
+          this.message = await this.failureMessage(response, `Could not load review queue (${response.status}).`);
+          return;
+        }
+        const data = await response.json();
+        this.items = data.items || [];
+        this.message = "";
+      },
+      async post(path, body = {}) {
+        if (!this.apiKey) {
+          this.message = "Enter your Signal API key first.";
+          return false;
+        }
+        this.message = "Working...";
+        const response = await fetch(path, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          this.message = await this.failureMessage(response, `Action failed (${response.status}).`);
+          await this.load();
+          return false;
+        }
+        await this.load();
+        this.message = "";
+        return true;
+      },
+      decide(id, decision) {
+        return this.post(`/admin/review/escalations/${id}/decision`, { decision });
+      },
+      applyBroadly(id, applyBroadly) {
+        return this.post(`/admin/review/escalations/${id}/apply-broadly`, { apply_broadly: applyBroadly });
+      },
+      approveRule(ruleId) {
+        return this.post(`/admin/review/rules/${ruleId}/approve`);
+      },
+      discardRule(ruleId) {
+        return this.post(`/admin/review/rules/${ruleId}/discard`);
+      },
+      toggleEdit(ruleId) {
+        this.editingRuleId = this.editingRuleId === ruleId ? null : ruleId;
+        this.edits[ruleId] = this.edits[ruleId] || "";
+      },
+      async submitEdit(ruleId) {
+        const editText = (this.edits[ruleId] || "").trim();
+        if (!editText) {
+          this.message = "Describe the rule change before updating.";
+          return;
+        }
+        const ok = await this.post(`/admin/review/rules/${ruleId}/edit`, { edit_text: editText });
+        if (ok) {
+          this.editingRuleId = null;
+          this.edits[ruleId] = "";
+        }
+      },
+      formatJson(value) {
+        return JSON.stringify(value || {}, null, 2);
+      },
+      stageLabel(item) {
+        if (item.stage === "decision") return "Needs decision";
+        if (item.stage === "scope") return "Decide reuse";
+        if (item.stage === "rule") return "Review rule";
+        return item.finalization_reason || item.status;
+      },
+      stageClass(stage) {
+        if (stage === "decision") return "text-red-700";
+        if (stage === "scope") return "text-amber-700";
+        if (stage === "rule") return "text-emerald-700";
+        return "text-stone-500";
+      },
+    };
+  }
+</script>
+{% endblock %}

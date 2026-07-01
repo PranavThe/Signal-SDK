@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Signal Settings{% endblock %}
+
+{% block content %}
+<div x-data="dashboardSettings()" x-init="load()" class="space-y-8">
+  <header class="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+    <div>
+      <p class="text-sm font-medium text-stone-500">Settings</p>
+      <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Workspace settings</h1>
+    </div>
+    <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+      <input x-model="apiKey" type="password" placeholder="Signal API key" class="h-10 min-w-0 flex-1 border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950 lg:w-72" />
+      <button @click="saveKey()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Use key</button>
+    </div>
+  </header>
+
+  <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+  <p x-show="!apiKey" class="text-sm text-stone-500">Enter your Signal API key to edit workspace settings.</p>
+
+  <section x-show="settings" x-cloak class="space-y-8">
+    <div class="border-y border-stone-200 py-5">
+      <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Workspace</p>
+      <p class="mt-2 text-lg font-semibold text-stone-950" x-text="settings.organization.name"></p>
+      <p class="mt-1 text-sm text-stone-500" x-text="settings.organization.id"></p>
+    </div>
+
+    <div class="border-t border-stone-200 pt-5">
+      <div class="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <div>
+          <h2 class="font-semibold">Decision delivery</h2>
+          <p class="mt-1 text-sm text-stone-500">Where new escalation decisions appear.</p>
+        </div>
+
+        <div class="space-y-5">
+          <div class="grid gap-4 sm:grid-cols-2">
+            <button
+              @click="setSlackEnabled(true)"
+              class="border-t border-stone-200 pt-4 text-left"
+              :class="settings.organization.slack_notifications_enabled ? 'text-stone-950' : 'text-stone-500'"
+            >
+              <span class="block text-sm font-semibold">Slack + dashboard</span>
+              <span class="mt-1 block text-sm">Slack cards are sent when Slack is configured.</span>
+            </button>
+            <button
+              @click="setSlackEnabled(false)"
+              class="border-t border-stone-200 pt-4 text-left"
+              :class="!settings.organization.slack_notifications_enabled ? 'text-stone-950' : 'text-stone-500'"
+            >
+              <span class="block text-sm font-semibold">Dashboard only</span>
+              <span class="mt-1 block text-sm">New decisions stay in the dashboard review queue.</span>
+            </button>
+          </div>
+
+          <div class="border-t border-stone-200 pt-5">
+            <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="slack-channel">Slack channel ID</label>
+            <div class="mt-2 flex flex-col gap-3 sm:flex-row">
+              <input id="slack-channel" x-model="slackChannelId" placeholder="C0123456789" class="h-10 min-w-0 flex-1 border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />
+              <button @click="saveSlackChannel()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Save channel</button>
+            </div>
+            <p class="mt-2 text-sm text-stone-500" x-text="slackStatus()"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  function dashboardSettings() {
+    return {
+      apiKey: sessionStorage.getItem("signal_api_key") || "",
+      settings: null,
+      slackChannelId: "",
+      message: "",
+      headers() {
+        return {
+          "Authorization": `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        };
+      },
+      saveKey() {
+        sessionStorage.setItem("signal_api_key", this.apiKey);
+        this.message = "API key saved for this browser session.";
+        this.load();
+      },
+      async failureMessage(response, fallback) {
+        try {
+          const data = await response.json();
+          if (typeof data?.detail === "string") return data.detail;
+          if (data?.detail?.message) return data.detail.message;
+        } catch {}
+        return fallback;
+      },
+      async load() {
+        if (!this.apiKey) return;
+        const response = await fetch("/admin/settings", { headers: this.headers() });
+        if (!response.ok) {
+          this.message = await this.failureMessage(response, `Could not load settings (${response.status}).`);
+          return;
+        }
+        this.settings = await response.json();
+        this.slackChannelId = this.settings.organization.slack_channel_id || "";
+        this.message = "";
+      },
+      async patch(body) {
+        if (!this.apiKey) {
+          this.message = "Enter your Signal API key first.";
+          return;
+        }
+        const response = await fetch("/admin/settings", {
+          method: "PATCH",
+          headers: this.headers(),
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          this.message = await this.failureMessage(response, `Could not save settings (${response.status}).`);
+          return;
+        }
+        this.settings = await response.json();
+        this.slackChannelId = this.settings.organization.slack_channel_id || "";
+        this.message = "Settings saved.";
+      },
+      setSlackEnabled(enabled) {
+        return this.patch({ slack_notifications_enabled: enabled });
+      },
+      saveSlackChannel() {
+        return this.patch({ slack_channel_id: this.slackChannelId });
+      },
+      slackStatus() {
+        if (!this.settings) return "";
+        if (!this.settings.organization.slack_notifications_enabled) return "Dashboard only is active.";
+        if (this.settings.organization.slack_configured) return "Slack delivery is active.";
+        return "Slack delivery is selected, but Slack is not fully configured.";
+      },
+    };
+  }
+</script>
+{% endblock %}

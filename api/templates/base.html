@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Signal Dashboard{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>[x-cloak] { display: none !important; }</style>
+  </head>
+  <body class="bg-white text-stone-950 antialiased">
+    <div class="min-h-screen lg:flex">
+      <aside class="border-b border-stone-200 lg:fixed lg:inset-y-0 lg:left-0 lg:w-64 lg:border-b-0 lg:border-r">
+        <div class="flex h-16 items-start justify-start px-5 pt-4 lg:h-20 lg:pt-5">
+          <a href="/dashboard" class="block">
+            <img src="/static/signal-logo.png" alt="Signal" class="h-8 w-auto max-w-[148px] object-contain object-left" style="filter: invert(1);" />
+          </a>
+        </div>
+        <nav class="flex gap-5 overflow-x-auto px-5 pb-4 lg:block lg:space-y-1 lg:overflow-visible">
+          <a href="/dashboard" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'overview' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Overview</a>
+          <a href="/dashboard/review" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'review' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Review</a>
+          <a href="/dashboard/rules" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'rules' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Rules</a>
+          <a href="/dashboard/escalations" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'escalations' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Escalations</a>
+          <a href="/dashboard/settings" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'settings' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Settings</a>
+        </nav>
+      </aside>
+
+      <main class="min-w-0 lg:ml-64 lg:flex-1">
+        <div class="mx-auto min-w-0 max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          {% block content %}{% endblock %}
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Signal Escalations{% endblock %}
+
+{% block content %}
+<header class="mb-6">
+  <p class="text-sm font-medium text-stone-500">Escalations</p>
+  <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Escalation history</h1>
+</header>
+
+<section>
+  <div class="overflow-x-auto">
+    <table class="min-w-full border-y border-stone-200 text-sm">
+      <thead class="border-b border-stone-200 text-left text-stone-500">
+        <tr>
+          <th class="py-3 pr-4 font-medium">Time</th>
+          <th class="px-4 py-3 font-medium">Agent</th>
+          <th class="px-4 py-3 font-medium">Context</th>
+          <th class="px-4 py-3 font-medium">Status</th>
+          <th class="px-4 py-3 font-medium">Decision</th>
+          <th class="py-3 pl-4 font-medium">Rule Created</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-stone-100">
+        {% for item in escalations %}
+        <tr x-data="{ open: false }" class="cursor-pointer align-top" @click="open = !open">
+          <td class="py-4 pr-4 text-stone-600">{{ item.time }}</td>
+          <td class="px-4 py-4 text-stone-600">{{ item.agent_id }}</td>
+          <td class="max-w-xl px-4 py-4">
+            <p class="font-medium text-stone-950">{{ item.context_short }}</p>
+            <div x-show="open" x-cloak class="mt-4 space-y-4 border-l-2 border-stone-200 pl-4 text-stone-700">
+              <div>
+                <p class="mb-1 text-xs font-semibold uppercase text-stone-500">Full context</p>
+                <p>{{ item.context }}</p>
+              </div>
+              <div>
+                <p class="mb-1 text-xs font-semibold uppercase text-stone-500">Metadata</p>
+                <pre class="overflow-auto border-y border-stone-200 py-3 text-xs">{{ item.metadata | tojson(indent=2) }}</pre>
+              </div>
+              {% if item.rule %}
+              <div>
+                <p class="mb-1 text-xs font-semibold uppercase text-stone-500">Rule details</p>
+                <p class="font-medium">{{ item.rule.condition }}</p>
+                <p class="mt-1 text-stone-600">{{ item.rule.action }}</p>
+              </div>
+              {% endif %}
+            </div>
+          </td>
+          <td class="px-4 py-4"><span class="text-xs font-semibold uppercase tracking-wide text-stone-500">{{ item.status }}</span></td>
+          <td class="px-4 py-4 text-stone-600">{{ item.human_decision }}</td>
+          <td class="py-4 pl-4 text-stone-600">{{ item.rule_created }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="px-4 py-8 text-center text-stone-500">No escalations yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
