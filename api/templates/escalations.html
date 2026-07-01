@@ -3,10 +3,38 @@
 {% block title %}Signal Escalations{% endblock %}
 
 {% block content %}
-<header class="mb-6">
-  <p class="text-sm font-medium text-stone-500">Escalations</p>
-  <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Escalation history</h1>
-</header>
+<div x-data='escalationFilters({{ escalations|tojson }})' class="space-y-8">
+  <header>
+    <p class="text-sm font-medium text-stone-500">Escalations</p>
+    <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Escalation history</h1>
+  </header>
+
+  <div class="space-y-3 border-y border-stone-200 py-4">
+    <input
+      type="text"
+      x-model="searchQuery"
+      placeholder="Search escalations by context or agent..."
+      class="w-full border border-stone-300 px-4 py-2 text-sm outline-none focus:border-stone-950"
+    />
+    <div class="flex flex-wrap gap-3">
+      <select x-model="filterStatus" class="border border-stone-300 px-3 py-2 text-sm outline-none focus:border-stone-950">
+        <option value="">All statuses</option>
+        <option value="resolved">Resolved</option>
+        <option value="pending">Pending</option>
+      </select>
+      <select x-model="filterDecision" class="border border-stone-300 px-3 py-2 text-sm outline-none focus:border-stone-950">
+        <option value="">All decisions</option>
+        <option value="approve">Approve</option>
+        <option value="reject">Reject</option>
+      </select>
+      <select x-model="filterRuleCreated" class="border border-stone-300 px-3 py-2 text-sm outline-none focus:border-stone-950">
+        <option value="">Rule created (all)</option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+      <button @click="clearFilters()" class="text-sm font-semibold text-stone-600 underline-offset-4 hover:underline">Clear filters</button>
+    </div>
+  </div>
 
 <section>
   <div class="overflow-x-auto">
@@ -22,41 +50,94 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-stone-100">
-        {% for item in escalations %}
+        <template x-for="item in filteredEscalations" :key="item.id || item.time">
         <tr x-data="{ open: false }" class="cursor-pointer align-top" @click="open = !open">
-          <td class="py-4 pr-4 text-stone-600">{{ item.time }}</td>
-          <td class="px-4 py-4 text-stone-600">{{ item.agent_id }}</td>
+          <td class="py-4 pr-4 text-stone-600" x-text="item.time"></td>
+          <td class="px-4 py-4 text-stone-600" x-text="item.agent_id"></td>
           <td class="max-w-xl px-4 py-4">
-            <p class="font-medium text-stone-950">{{ item.context_short }}</p>
-            <div x-show="open" x-cloak class="mt-4 border border-stone-200 bg-stone-50 p-4">
+            <p class="font-medium text-stone-950" x-text="item.context_short"></p>
+            <div x-show="open" x-cloak class="mt-4 border-l-2 border-stone-200 pl-4">
               <div class="space-y-4 text-stone-700">
                 <div>
                   <p class="mb-1 text-xs font-semibold uppercase text-stone-500">Full context</p>
-                  <p>{{ item.context }}</p>
+                  <p x-text="item.context"></p>
                 </div>
                 <div>
                   <p class="mb-1 text-xs font-semibold uppercase text-stone-500">Metadata</p>
-                  <pre class="overflow-auto border border-stone-200 bg-white p-3 text-xs">{{ item.metadata | tojson(indent=2) }}</pre>
+                  <pre class="overflow-auto border-y border-stone-200 py-3 text-xs" x-text="JSON.stringify(item.metadata || {}, null, 2)"></pre>
                 </div>
-                {% if item.rule %}
-                <div class="border border-stone-200 bg-white p-3">
-                  <p class="mb-1 text-xs font-semibold uppercase text-stone-500">Rule details</p>
-                  <p class="font-medium">{{ item.rule.condition }}</p>
-                  <p class="mt-1 text-stone-600">{{ item.rule.action }}</p>
-                </div>
-                {% endif %}
+                <template x-if="item.rule">
+                  <div class="border-t border-stone-200 pt-3">
+                    <p class="mb-1 text-xs font-semibold uppercase text-stone-500">Rule details</p>
+                    <p class="font-medium" x-text="item.rule.condition"></p>
+                    <p class="mt-1 text-stone-600" x-text="item.rule.action"></p>
+                  </div>
+                </template>
               </div>
             </div>
           </td>
-          <td class="px-4 py-4"><span class="text-xs font-semibold uppercase tracking-wide text-stone-500">{{ item.status }}</span></td>
-          <td class="px-4 py-4 text-stone-600">{{ item.human_decision }}</td>
-          <td class="py-4 pl-4 text-stone-600">{{ item.rule_created }}</td>
+          <td class="px-4 py-4"><span class="text-xs font-semibold uppercase tracking-wide text-stone-500" x-text="item.status"></span></td>
+          <td class="px-4 py-4 text-stone-600" x-text="item.human_decision"></td>
+          <td class="py-4 pl-4 text-stone-600" x-text="item.rule_created"></td>
         </tr>
-        {% else %}
-        <tr><td colspan="6" class="px-4 py-8 text-center text-stone-500">No escalations yet.</td></tr>
-        {% endfor %}
+        </template>
+        <tr x-show="filteredEscalations.length === 0 && escalations.length === 0" x-cloak><td colspan="6" class="px-4 py-8 text-center text-stone-500">No escalations yet.</td></tr>
+        <tr x-show="filteredEscalations.length === 0 && escalations.length > 0" x-cloak><td colspan="6" class="px-4 py-8 text-center text-stone-500">No escalations match your search criteria.</td></tr>
       </tbody>
     </table>
   </div>
 </section>
+</div>
+
+<script>
+  function escalationFilters(initialEscalations) {
+    return {
+      escalations: initialEscalations,
+      searchQuery: "",
+      filterStatus: "",
+      filterDecision: "",
+      filterRuleCreated: "",
+      get filteredEscalations() {
+        let filtered = this.escalations;
+
+        // Search filter
+        if (this.searchQuery.trim()) {
+          const query = this.searchQuery.toLowerCase();
+          filtered = filtered.filter(item =>
+            (item.context || "").toLowerCase().includes(query) ||
+            (item.context_short || "").toLowerCase().includes(query) ||
+            (item.agent_id || "").toLowerCase().includes(query)
+          );
+        }
+
+        // Status filter
+        if (this.filterStatus) {
+          filtered = filtered.filter(item => (item.status || "").toLowerCase() === this.filterStatus.toLowerCase());
+        }
+
+        // Decision filter
+        if (this.filterDecision) {
+          filtered = filtered.filter(item => (item.human_decision || "").toLowerCase() === this.filterDecision.toLowerCase());
+        }
+
+        // Rule created filter
+        if (this.filterRuleCreated) {
+          if (this.filterRuleCreated === "yes") {
+            filtered = filtered.filter(item => item.rule_created && item.rule_created !== "No");
+          } else if (this.filterRuleCreated === "no") {
+            filtered = filtered.filter(item => !item.rule_created || item.rule_created === "No");
+          }
+        }
+
+        return filtered;
+      },
+      clearFilters() {
+        this.searchQuery = "";
+        this.filterStatus = "";
+        this.filterDecision = "";
+        this.filterRuleCreated = "";
+      }
+    };
+  }
+</script>
 {% endblock %}

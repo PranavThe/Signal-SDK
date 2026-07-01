@@ -9,7 +9,32 @@
     <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Rules library</h1>
   </header>
 
-  <div x-show="selectedCount > 0" x-cloak class="flex flex-col gap-3 border-y border-stone-200 py-3 sm:flex-row sm:items-center sm:justify-between">
+  <div class="space-y-3 border-y border-stone-200 py-4">
+    <input
+      type="text"
+      x-model="searchQuery"
+      placeholder="Search rules by condition or action..."
+      class="w-full border border-stone-300 px-4 py-2 text-sm outline-none focus:border-stone-950"
+    />
+    <div class="flex flex-wrap gap-3">
+      <select x-model="filterStatus" class="border border-stone-300 px-3 py-2 text-sm outline-none focus:border-stone-950">
+        <option value="">All statuses</option>
+        <option value="active">Active</option>
+        <option value="paused">Paused</option>
+        <option value="pending_approval">Pending Approval</option>
+        <option value="pending_edit">Pending Edit</option>
+      </select>
+      <select x-model="filterConfidence" class="border border-stone-300 px-3 py-2 text-sm outline-none focus:border-stone-950">
+        <option value="">All confidence levels</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+      <button @click="clearFilters()" class="text-sm font-semibold text-stone-600 underline-offset-4 hover:underline">Clear filters</button>
+    </div>
+  </div>
+
+  <div x-show="selectedCount > 0" x-cloak class="flex flex-col gap-3 border-b border-stone-200 py-3 sm:flex-row sm:items-center sm:justify-between">
     <p class="text-sm text-stone-600">
       <span x-text="selectedCount"></span> selected
     </p>
@@ -30,7 +55,7 @@
     </div>
 
     <div class="space-y-3">
-      <template x-for="rule in rules" :key="rule.id">
+      <template x-for="rule in filteredRules" :key="rule.id">
         <div class="border border-stone-200 bg-white">
           <!-- Header with checkbox and status -->
           <div class="flex items-start gap-4 border-b border-stone-200 bg-stone-50 p-4">
@@ -85,8 +110,11 @@
         </div>
       </template>
 
-      <div x-show="rules.length === 0" x-cloak class="border border-stone-200 bg-stone-50 py-12 text-center">
+      <div x-show="filteredRules.length === 0 && rules.length === 0" x-cloak class="border border-stone-200 bg-stone-50 py-12 text-center">
         <p class="text-sm text-stone-500">No rules yet.</p>
+      </div>
+      <div x-show="filteredRules.length === 0 && rules.length > 0" x-cloak class="border border-stone-200 bg-stone-50 py-12 text-center">
+        <p class="text-sm text-stone-500">No rules match your search criteria.</p>
       </div>
     </div>
   </section>
@@ -99,11 +127,43 @@
       message: "",
       rules: initialRules,
       selected: [],
+      searchQuery: "",
+      filterStatus: "",
+      filterConfidence: "",
+      get filteredRules() {
+        let filtered = this.rules;
+
+        // Search filter
+        if (this.searchQuery.trim()) {
+          const query = this.searchQuery.toLowerCase();
+          filtered = filtered.filter(rule =>
+            rule.condition.toLowerCase().includes(query) ||
+            rule.action.toLowerCase().includes(query)
+          );
+        }
+
+        // Status filter
+        if (this.filterStatus) {
+          filtered = filtered.filter(rule => rule.status === this.filterStatus);
+        }
+
+        // Confidence filter
+        if (this.filterConfidence) {
+          filtered = filtered.filter(rule => rule.confidence.toLowerCase() === this.filterConfidence.toLowerCase());
+        }
+
+        return filtered;
+      },
       get selectedCount() {
         return this.selected.length;
       },
       get allSelected() {
-        return this.rules.length > 0 && this.selected.length === this.rules.length;
+        return this.filteredRules.length > 0 && this.selected.length === this.filteredRules.length;
+      },
+      clearFilters() {
+        this.searchQuery = "";
+        this.filterStatus = "";
+        this.filterConfidence = "";
       },
       headers() {
         return {
@@ -132,7 +192,7 @@
           : this.selected.filter((id) => id !== ruleId);
       },
       toggleAll(checked) {
-        this.selected = checked ? this.rules.map((rule) => rule.id) : [];
+        this.selected = checked ? this.filteredRules.map((rule) => rule.id) : [];
       },
       async failureMessage(response, fallback) {
         let data = null;
