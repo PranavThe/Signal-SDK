@@ -41,30 +41,39 @@ pip install signalops
 ### 4. Integrate Signal into Your Agent
 
 ```python
-from signalops import SignalClient
+import signalops
 
-# Initialize the client
-signal = SignalClient(api_key="sk_live_your_api_key_here")
+# Configure once (optional - can also use SIGNALOPS_API_KEY env var)
+signalops.configure(api_key="sk_live_your_api_key_here")
 
-# Ask Signal for a decision
-decision = signal.ask(
+# Escalate a decision to Signal
+result = await signalops.escalate(
     agent_id="customer-support-bot",
     question="Should I issue a refund?",
-    context={
+    context=(
+        "A customer is requesting a refund.\n\n"
+        "Customer ID: cust_123\n"
+        "Order Amount: $150\n"
+        "Reason: Product arrived damaged\n"
+        "Customer Tier: premium\n"
+        "Days Since Purchase: 3"
+    ),
+    metadata={
         "customer_id": "cust_123",
-        "order_amount": "$150",
-        "reason": "Product arrived damaged",
+        "order_amount": 150,
         "customer_tier": "premium",
         "days_since_purchase": 3
     }
 )
 
 # Use the decision
-if decision.approved:
+if result.decision in ["approve", "yes"]:
     issue_refund()
 else:
     deny_refund()
 ```
+
+Note: Signal uses async/await, so your function must be async.
 
 ---
 
@@ -245,32 +254,32 @@ Use the dropdown to switch between organizations you're a member of.
 
 ## SDK Reference
 
-### SignalClient
+### configure()
 
-Initialize the Signal client with your API key:
+Configure Signal globally (optional - you can also set `SIGNALOPS_API_KEY` environment variable):
 
 ```python
-from signalops import SignalClient
+import signalops
 
-client = SignalClient(
+signalops.configure(
     api_key="sk_live_your_api_key_here",
     base_url="https://your-signal-deployment.com"  # Optional
 )
 ```
 
-### ask()
+### escalate()
 
-Request a decision from Signal:
+Escalate a decision to Signal and wait for human review:
 
 ```python
-decision = client.ask(
+result = await signalops.escalate(
     agent_id="your-agent-identifier",
     question="Should I perform this action?",
-    context={
-        "key": "value",
-        "structured": "data"
-    },
-    metadata={}  # Optional additional data
+    context="Description of the situation with relevant details",
+    metadata={"key": "value"},  # Optional structured data
+    action="action_name",  # Optional action identifier
+    timeout_seconds=3600,  # Optional, default 3600
+    poll_interval_seconds=3  # Optional, default 3
 )
 ```
 
@@ -278,40 +287,83 @@ decision = client.ask(
 
 - `agent_id` (str): Unique identifier for your agent
 - `question` (str): Clear description of what decision is needed
-- `context` (dict): Structured information about the situation
-  - Use field-value pairs for best dashboard display
-  - Example: `{"amount": "$150", "customer_tier": "premium"}`
-- `metadata` (dict, optional): Additional context not shown in main display
+- `context` (str): Text description of the situation
+  - Format with field: value pairs for best dashboard display
+  - Example: `"Amount: $150\nCustomer Tier: premium"`
+- `metadata` (dict, optional): Additional structured data (stored but not displayed prominently)
+- `action` (str, optional): Action identifier for this decision type
+- `timeout_seconds` (int, optional): How long to wait for a decision (default: 3600)
+- `poll_interval_seconds` (int, optional): Polling frequency (default: 3)
+- `api_key` (str, optional): Override configured API key
+- `base_url` (str, optional): Override configured base URL
 
 **Returns:**
 
-A decision object with:
+An `EscalationResult` object with:
 
-- `approved` (bool): Whether the action was approved
-- `rule_id` (str|None): ID of the rule that made this decision (if auto-decided)
-- `explanation` (str): Reasoning for the decision
+- `decision` (str): The decision made ("approve", "reject", etc.)
+- `rule_id` (str|None): ID of the rule that made this decision (if auto-resolved)
+- `auto_resolved` (bool): Whether this was resolved by a rule without human review
+
+### check()
+
+Check if an action should be allowed based on existing rules (without escalating):
+
+```python
+result = await signalops.check(
+    action="action_name",
+    context={"key": "value"},
+    agent_id="your-agent-identifier"
+)
+```
+
+**Parameters:**
+
+- `action` (str): Action identifier to check
+- `context` (dict): Structured data about the situation
+- `agent_id` (str): Unique identifier for your agent
+- `api_key` (str, optional): Override configured API key
+- `base_url` (str, optional): Override configured base URL
+
+**Returns:**
+
+A `CheckResult` object with:
+
+- `result` (str): "allow", "block", or "escalate"
+- `rule_id` (str|None): ID of the matching rule (if any)
+- `reasoning` (str): Explanation for the result
+- `modification` (dict|None): Any suggested modifications to the action
 
 ### Context Best Practices
 
 Structure your context for readability in the dashboard:
 
 ```python
-# Good - structured key-value pairs
-context = {
-    "User ID": "user_12345",
-    "Request Type": "Password Reset",
-    "Account Age": "30 days",
-    "Previous Resets": "0",
-    "IP Location": "New York, US"
-}
+# Good - field: value pairs
+context = (
+    "User ID: user_12345\n"
+    "Request Type: Password Reset\n"
+    "Account Age: 30 days\n"
+    "Previous Resets: 0\n"
+    "IP Location: New York, US"
+)
+
+# Also good - using newlines to separate
+context = """
+User ID: user_12345
+Request Type: Password Reset
+Account Age: 30 days
+Previous Resets: 0
+IP Location: New York, US
+"""
 
 # Less optimal - paragraph format
-context = {
-    "details": "User user_12345 is requesting a password reset. Account is 30 days old with 0 previous resets from New York, US."
-}
+context = "User user_12345 is requesting a password reset. Account is 30 days old with 0 previous resets from New York, US."
 ```
 
-The first format displays as a clean grid in the dashboard, while the second shows as a paragraph.
+The field: value format displays as a clean grid in the dashboard, while paragraph format shows as plain text.
+
+Use the `metadata` parameter for structured data you want to store but don't need prominently displayed.
 
 ---
 
@@ -320,69 +372,100 @@ The first format displays as a clean grid in the dashboard, while the second sho
 ### Customer Support Automation
 
 ```python
-# Refund decisions
-decision = signal.ask(
-    agent_id="support-bot",
-    question="Should I approve this refund request?",
-    context={
-        "Order Amount": f"${order.total}",
-        "Days Since Purchase": str(days_ago),
-        "Reason": refund_reason,
-        "Customer Lifetime Value": f"${customer.ltv}",
-        "Previous Refunds": str(customer.refund_count)
-    }
-)
+import signalops
+
+async def handle_refund_request(order, customer, refund_reason):
+    result = await signalops.escalate(
+        agent_id="support-bot",
+        question="Should I approve this refund request?",
+        context=(
+            f"Order Amount: ${order.total}\n"
+            f"Days Since Purchase: {days_ago}\n"
+            f"Reason: {refund_reason}\n"
+            f"Customer Lifetime Value: ${customer.ltv}\n"
+            f"Previous Refunds: {customer.refund_count}"
+        ),
+        metadata={
+            "order_id": order.id,
+            "customer_id": customer.id
+        }
+    )
+
+    if result.decision == "approve":
+        process_refund(order)
+    else:
+        send_refund_denial(customer)
 ```
 
 ### Content Moderation
 
 ```python
-# Review flagged content
-decision = signal.ask(
-    agent_id="content-moderator",
-    question="Should this content be removed?",
-    context={
-        "Content Type": content.type,
-        "Flag Reason": flag.reason,
-        "User Reputation Score": str(user.reputation),
-        "Previous Violations": str(user.violations),
-        "Community Reports": str(flag.report_count)
-    }
-)
+async def moderate_content(content, flag, user):
+    result = await signalops.escalate(
+        agent_id="content-moderator",
+        question="Should this content be removed?",
+        context=(
+            f"Content Type: {content.type}\n"
+            f"Flag Reason: {flag.reason}\n"
+            f"User Reputation Score: {user.reputation}\n"
+            f"Previous Violations: {user.violations}\n"
+            f"Community Reports: {flag.report_count}"
+        ),
+        metadata={
+            "content_id": content.id,
+            "user_id": user.id,
+            "flag_id": flag.id
+        }
+    )
+
+    if result.decision == "approve":
+        remove_content(content)
 ```
 
 ### Financial Approvals
 
 ```python
-# Transaction approval
-decision = signal.ask(
-    agent_id="transaction-monitor",
-    question="Should this transaction be approved?",
-    context={
-        "Transaction Amount": f"${transaction.amount}",
-        "Account Balance": f"${account.balance}",
-        "Merchant Category": merchant.category,
-        "Transaction Location": transaction.location,
-        "Risk Score": str(risk_model.score)
-    }
-)
+async def approve_transaction(transaction, account, merchant):
+    result = await signalops.escalate(
+        agent_id="transaction-monitor",
+        question="Should this transaction be approved?",
+        context=(
+            f"Transaction Amount: ${transaction.amount}\n"
+            f"Account Balance: ${account.balance}\n"
+            f"Merchant Category: {merchant.category}\n"
+            f"Transaction Location: {transaction.location}\n"
+            f"Risk Score: {risk_model.score}"
+        ),
+        metadata={
+            "transaction_id": transaction.id,
+            "account_id": account.id
+        }
+    )
+
+    return result.decision == "approve"
 ```
 
 ### HR Automation
 
 ```python
-# Leave request approval
-decision = signal.ask(
-    agent_id="hr-assistant",
-    question="Should this leave request be approved?",
-    context={
-        "Leave Type": request.type,
-        "Duration": f"{request.days} days",
-        "Remaining Balance": f"{employee.leave_balance} days",
-        "Team Coverage": coverage_status,
-        "Notice Period": f"{notice_days} days"
-    }
-)
+async def approve_leave_request(request, employee, coverage_status):
+    result = await signalops.escalate(
+        agent_id="hr-assistant",
+        question="Should this leave request be approved?",
+        context=(
+            f"Leave Type: {request.type}\n"
+            f"Duration: {request.days} days\n"
+            f"Remaining Balance: {employee.leave_balance} days\n"
+            f"Team Coverage: {coverage_status}\n"
+            f"Notice Period: {notice_days} days"
+        ),
+        metadata={
+            "request_id": request.id,
+            "employee_id": employee.id
+        }
+    )
+
+    return result.decision == "approve"
 ```
 
 ---
@@ -398,13 +481,13 @@ Write questions that can be answered with approve/reject:
 
 ### 2. Structured Context
 
-Provide context as field-value pairs for dashboard readability:
+Provide context as field: value pairs for dashboard readability:
 
 ```python
-context = {
-    "Field Name": "value",
-    "Another Field": "another value"
-}
+context = (
+    "Field Name: value\n"
+    "Another Field: another value"
+)
 ```
 
 ### 3. Consistent Agent IDs
@@ -523,15 +606,19 @@ Here's a complete example of Signal in action:
 ### 1. Agent Makes Request
 
 ```python
-decision = signal.ask(
+import signalops
+
+signalops.configure(api_key="sk_live_...")
+
+result = await signalops.escalate(
     agent_id="refund-bot",
     question="Should I approve this refund?",
-    context={
-        "Amount": "$75",
-        "Reason": "Wrong size ordered",
-        "Customer Tier": "Gold",
-        "Order Age": "5 days"
-    }
+    context=(
+        "Amount: $75\n"
+        "Reason: Wrong size ordered\n"
+        "Customer Tier: Gold\n"
+        "Order Age: 5 days"
+    )
 )
 ```
 
@@ -563,17 +650,17 @@ Rule looks good, you click **Approve rule**.
 Another Gold customer requests a $60 refund after 3 days:
 
 ```python
-decision = signal.ask(
+result = await signalops.escalate(
     agent_id="refund-bot",
     question="Should I approve this refund?",
-    context={
-        "Amount": "$60",
-        "Reason": "Different issue",
-        "Customer Tier": "Gold",
-        "Order Age": "3 days"
-    }
+    context=(
+        "Amount: $60\n"
+        "Reason: Different issue\n"
+        "Customer Tier: Gold\n"
+        "Order Age: 3 days"
+    )
 )
-# Returns immediately: approved=True (auto-handled via rule)
+# Returns immediately: result.decision="approve", result.auto_resolved=True
 ```
 
 Your autonomy score increases!
@@ -584,7 +671,7 @@ Your autonomy score increases!
 
 ### Total Agent Decisions
 
-Count of all `signal.ask()` calls made today.
+Count of all `signalops.escalate()` calls made today.
 
 ### Auto-Handled
 
@@ -608,7 +695,7 @@ Higher scores mean your agent is learning and handling more decisions independen
 
 1. ✅ Generate your API key in Settings
 2. ✅ Install the SDK: `pip install signalops`
-3. ✅ Integrate `signal.ask()` into your agent
+3. ✅ Integrate `await signalops.escalate()` into your agent
 4. ✅ Review your first escalation in the Review tab
 5. ✅ Create your first rule
 6. ✅ Monitor autonomy growth in Overview
