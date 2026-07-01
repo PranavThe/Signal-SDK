@@ -21,106 +21,171 @@
     </div>
   </section>
 
-  <p x-show="!apiKey" class="text-sm text-stone-500">Please configure your API key in <a href="/dashboard/settings" class="font-semibold underline-offset-4 hover:underline">Settings</a> to load your organization's review queue.</p>
-  <p x-show="apiKey && loading" x-cloak class="text-sm text-stone-500">Loading decisions...</p>
-  <p x-show="apiKey && !loading && items.length === 0" x-cloak class="text-sm text-stone-500">No decisions waiting.</p>
+  <p x-show="!hasOrg" class="text-sm text-stone-500">Select an organization in <a href="/dashboard/settings" class="font-semibold underline-offset-4 hover:underline">Settings</a> to load your review queue.</p>
+  <p x-show="hasOrg && loading" x-cloak class="text-sm text-stone-500">Loading decisions...</p>
+  <p x-show="hasOrg && !loading && items.length === 0" x-cloak class="text-sm text-stone-500">No decisions waiting.</p>
 
   <div class="space-y-4" x-show="items.length > 0" x-cloak>
     <template x-for="item in items" :key="item.id">
-      <section class="border border-stone-200 p-6">
-        <div class="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span :class="stageClass(item.stage)" class="text-xs font-semibold uppercase tracking-wide" x-text="stageLabel(item)"></span>
-              <span class="text-sm text-stone-500" x-text="`${item.agent_id} · ${item.created}`"></span>
+      <section class="border border-stone-200">
+        <!-- Header with stage and metadata -->
+        <div class="border-b border-stone-200 bg-stone-50 p-4">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <div class="flex items-center gap-3">
+                <span :class="stageClass(item.stage)" class="text-xs font-semibold uppercase tracking-wide" x-text="stageLabel(item)"></span>
+                <span class="text-xs text-stone-500" x-text="item.agent_id"></span>
+                <span class="text-xs text-stone-400" x-text="item.created"></span>
+              </div>
+              <h2 class="mt-2 text-base font-semibold text-stone-950" x-text="item.question"></h2>
             </div>
-            <h2 class="mt-3 text-lg font-semibold tracking-tight text-stone-950" x-text="item.question"></h2>
-          </div>
-          <div class="flex shrink-0 gap-4" x-show="item.stage === 'decision'">
-            <button @click="decide(item.id, 'approve')" class="text-sm font-semibold text-emerald-700 underline-offset-4 hover:underline">Approve</button>
-            <button @click="decide(item.id, 'reject')" class="text-sm font-semibold text-red-700 underline-offset-4 hover:underline">Reject</button>
           </div>
         </div>
 
-        <div class="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div class="space-y-5">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Context</p>
-              <p class="mt-2 text-sm leading-6 text-stone-800" x-text="item.context"></p>
-            </div>
-
-            <div x-show="Object.keys(item.metadata || {}).length > 0">
-              <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Metadata</p>
-              <pre class="mt-2 overflow-auto border-y border-stone-200 py-3 text-xs leading-5 text-stone-700" x-text="formatJson(item.metadata)"></pre>
-            </div>
-
-            <template x-if="item.similar_decisions && item.similar_decisions.length > 0">
+        <!-- Main content area -->
+        <div class="p-6">
+          <!-- STAGE 1: Decision Needed -->
+          <template x-if="item.stage === 'decision'">
+            <div class="space-y-6">
               <div>
-                <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-stone-500">Similar past decisions</p>
-                <div class="space-y-2">
-                  <template x-for="decision in item.similar_decisions" :key="`${item.id}-${decision.context}`">
-                    <div class="border border-stone-200 bg-stone-50 p-3">
-                      <p class="text-sm font-medium text-stone-950" x-text="`${decision.human_decision} · ${decision.time_ago} · ${decision.similarity}`"></p>
-                      <p class="mt-1 text-sm text-stone-600" x-text="decision.context"></p>
-                    </div>
-                  </template>
-                </div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Context</p>
+                <p class="mt-2 text-sm leading-relaxed text-stone-700" x-text="item.context"></p>
               </div>
-            </template>
-          </div>
 
-          <aside class="space-y-5 border-t border-stone-200 pt-5 lg:border-t-0 lg:border-l lg:pl-6 lg:pt-0">
-            <template x-if="item.stage === 'scope'">
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Decision recorded</p>
-                <p class="mt-2 text-sm text-stone-700" x-text="`Human decision: ${item.human_decision}`"></p>
-                <div class="mt-4 flex flex-wrap gap-4">
-                  <button @click="applyBroadly(item.id, true)" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Make it a rule</button>
-                  <button @click="applyBroadly(item.id, false)" class="text-sm font-semibold text-stone-600 underline-offset-4 hover:underline">One-time only</button>
-                </div>
-              </div>
-            </template>
-
-            <template x-if="item.rule">
-              <div class="space-y-5">
-                <div class="border border-stone-200 bg-stone-50 p-4">
-                  <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Proposed rule</p>
-                  <p class="mt-3 text-sm font-semibold text-stone-950">WHEN</p>
-                  <p class="mt-1 text-sm leading-6 text-stone-700" x-text="item.rule.condition"></p>
-                  <p class="mt-4 text-sm font-semibold text-stone-950">DO</p>
-                  <p class="mt-1 text-sm leading-6 text-stone-700" x-text="item.rule.action"></p>
-                  <p class="mt-3 text-xs text-stone-500" x-text="`${item.rule.confidence} confidence · ${item.rule.status}`"></p>
-                  <p x-show="item.rule.exceptions_note" class="mt-3 text-sm text-stone-600" x-text="item.rule.exceptions_note"></p>
-                </div>
-
-                <template x-if="item.rule.conflicts && item.rule.conflicts.length > 0">
-                  <div class="border border-amber-500 bg-amber-50 p-4">
-                    <p class="text-sm font-semibold text-amber-700">Potential conflict</p>
-                    <template x-for="conflict in item.rule.conflicts" :key="conflict.existing_rule_id">
-                      <div class="mt-2">
-                        <p class="text-sm text-stone-800" x-text="`${conflict.existing_condition} → ${conflict.existing_action}`"></p>
-                        <p class="mt-1 text-sm text-stone-500" x-text="conflict.explanation"></p>
+              <template x-if="item.similar_decisions && item.similar_decisions.length > 0">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Similar past decisions</p>
+                  <div class="mt-3 space-y-2">
+                    <template x-for="decision in item.similar_decisions" :key="`${item.id}-${decision.context}`">
+                      <div class="border border-stone-200 bg-stone-50 p-3">
+                        <p class="text-xs font-medium text-stone-600" x-text="`${decision.human_decision} · ${decision.time_ago} · ${decision.similarity}`"></p>
+                        <p class="mt-1 text-sm text-stone-700" x-text="decision.context"></p>
                       </div>
                     </template>
                   </div>
-                </template>
-
-                <div class="flex flex-wrap gap-4">
-                  <button x-show="!item.rule.conflicts || item.rule.conflicts.length === 0" @click="approveRule(item.rule.id)" class="text-sm font-semibold text-emerald-700 underline-offset-4 hover:underline">Approve rule</button>
-                  <button @click="toggleEdit(item.rule.id)" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Edit rule</button>
-                  <button @click="discardRule(item.rule.id)" class="text-sm font-semibold text-red-700 underline-offset-4 hover:underline">Discard</button>
                 </div>
+              </template>
 
-                <div x-show="editingRuleId === item.rule.id" x-cloak class="space-y-3">
-                  <textarea x-model="edits[item.rule.id]" rows="4" placeholder="Describe what should change about this rule." class="w-full resize-y border-y border-stone-200 bg-transparent py-3 text-sm outline-none focus:border-stone-950"></textarea>
-                  <div class="flex gap-4">
-                    <button @click="submitEdit(item.rule.id)" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Update rule</button>
-                    <button @click="editingRuleId = null" class="text-sm font-semibold text-stone-500 underline-offset-4 hover:underline">Cancel</button>
+              <div class="border-t border-stone-200 pt-6">
+                <p class="mb-3 text-sm font-medium text-stone-950">What should the agent do?</p>
+                <div class="flex gap-3">
+                  <button @click="decide(item.id, 'approve')" class="border border-emerald-600 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">Approve</button>
+                  <button @click="decide(item.id, 'reject')" class="border border-red-600 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100">Reject</button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- STAGE 2: Should this be a rule? -->
+          <template x-if="item.stage === 'scope'">
+            <div class="space-y-6">
+              <div class="border border-emerald-200 bg-emerald-50 p-4">
+                <p class="text-sm font-semibold text-emerald-900">Decision recorded</p>
+                <p class="mt-1 text-sm text-emerald-800" x-text="`You chose: ${item.human_decision}`"></p>
+              </div>
+
+              <div>
+                <p class="mb-3 text-sm font-medium text-stone-950">Should this decision apply to similar situations?</p>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <button @click="applyBroadly(item.id, true)" class="border border-stone-950 bg-stone-50 p-4 text-left hover:bg-stone-100">
+                    <p class="text-sm font-semibold text-stone-950">Create a rule</p>
+                    <p class="mt-1 text-sm text-stone-600">Agent will handle similar cases automatically</p>
+                  </button>
+                  <button @click="applyBroadly(item.id, false)" class="border border-stone-300 p-4 text-left hover:border-stone-400 hover:bg-stone-50">
+                    <p class="text-sm font-semibold text-stone-950">One-time only</p>
+                    <p class="mt-1 text-sm text-stone-600">Just for this specific case</p>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- STAGE 3: Review and approve rule -->
+          <template x-if="item.rule && editingRuleId !== item.rule.id">
+            <div class="space-y-6">
+              <!-- Conflict warning (if any) -->
+              <template x-if="item.rule.conflicts && item.rule.conflicts.length > 0">
+                <div class="border border-amber-500 bg-amber-50 p-4">
+                  <p class="text-sm font-semibold text-amber-900">⚠ Potential conflict detected</p>
+                  <template x-for="conflict in item.rule.conflicts" :key="conflict.existing_rule_id">
+                    <div class="mt-3">
+                      <p class="text-sm font-medium text-amber-900" x-text="conflict.existing_condition + ' → ' + conflict.existing_action"></p>
+                      <p class="mt-1 text-sm text-amber-800" x-text="conflict.explanation"></p>
+                    </div>
+                  </template>
+                  <p class="mt-3 text-sm text-amber-900">You must edit this rule before approving.</p>
+                </div>
+              </template>
+
+              <!-- Proposed rule -->
+              <div class="border border-stone-200 p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Proposed rule</p>
+                <div class="mt-4 space-y-4">
+                  <div>
+                    <p class="text-xs font-semibold text-stone-950">WHEN</p>
+                    <p class="mt-1 text-sm leading-relaxed text-stone-700" x-text="item.rule.condition"></p>
+                  </div>
+                  <div>
+                    <p class="text-xs font-semibold text-stone-950">DO</p>
+                    <p class="mt-1 text-sm leading-relaxed text-stone-700" x-text="item.rule.action"></p>
+                  </div>
+                  <div class="flex items-center gap-4 border-t border-stone-200 pt-3 text-xs text-stone-500">
+                    <span x-text="item.rule.confidence + ' confidence'"></span>
+                    <span x-show="item.rule.exceptions_note" x-text="'Exceptions noted'"></span>
                   </div>
                 </div>
               </div>
-            </template>
-          </aside>
+
+              <!-- Actions -->
+              <div class="border-t border-stone-200 pt-6">
+                <div class="flex flex-wrap gap-3">
+                  <button
+                    x-show="!item.rule.conflicts || item.rule.conflicts.length === 0"
+                    @click="approveRule(item.rule.id)"
+                    class="border border-emerald-600 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
+                    Approve rule
+                  </button>
+                  <button @click="toggleEdit(item.rule.id)" class="border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-950 hover:border-stone-950 hover:bg-stone-50">
+                    Edit rule
+                  </button>
+                  <button @click="discardRule(item.rule.id)" class="px-4 py-2 text-sm font-semibold text-red-700 underline-offset-4 hover:underline">
+                    Discard
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- EDIT MODE -->
+          <template x-if="item.rule && editingRuleId === item.rule.id">
+            <div class="space-y-6">
+              <div class="border border-stone-950 bg-stone-50 p-4">
+                <p class="text-sm font-semibold text-stone-950">Edit mode</p>
+                <p class="mt-1 text-sm text-stone-600">Describe the changes you want to make to this rule.</p>
+              </div>
+
+              <div>
+                <label class="text-xs font-semibold uppercase tracking-wide text-stone-500">Change instructions</label>
+                <textarea
+                  x-model="edits[item.rule.id]"
+                  rows="4"
+                  placeholder="Example: Make the condition more specific by adding a check for user role = admin"
+                  class="mt-2 w-full resize-y border border-stone-300 bg-white p-3 text-sm outline-none focus:border-stone-950">
+                </textarea>
+              </div>
+
+              <div class="border-t border-stone-200 pt-6">
+                <div class="flex gap-3">
+                  <button @click="submitEdit(item.rule.id)" class="border border-stone-950 bg-stone-50 px-4 py-2 text-sm font-semibold text-stone-950 hover:bg-stone-100">
+                    Update rule
+                  </button>
+                  <button @click="cancelEdit(item.rule.id)" class="px-4 py-2 text-sm font-semibold text-stone-600 underline-offset-4 hover:underline">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
         </div>
       </section>
     </template>
@@ -130,7 +195,7 @@
 <script>
   function reviewQueue() {
     return {
-      apiKey: sessionStorage.getItem("signal_api_key") || "",
+      hasOrg: {{ 'true' if current_org else 'false' }},
       items: [],
       loading: false,
       message: "",
@@ -138,7 +203,6 @@
       edits: {},
       headers() {
         return {
-          "Authorization": `Bearer ${this.apiKey}`,
           "Content-Type": "application/json",
         };
       },
@@ -156,12 +220,15 @@
         return fallback;
       },
       async load() {
-        if (!this.apiKey) {
+        if (!this.hasOrg) {
           this.message = "";
           return;
         }
         this.loading = true;
-        const response = await fetch("/admin/review", { headers: this.headers() });
+        const response = await fetch("/admin/review", {
+          credentials: "include",
+          headers: this.headers(),
+        });
         this.loading = false;
         if (!response.ok) {
           this.message = await this.failureMessage(response, `Could not load review queue (${response.status}).`);
@@ -172,13 +239,14 @@
         this.message = "";
       },
       async post(path, body = {}) {
-        if (!this.apiKey) {
-          this.message = "Please configure your API key in Settings first.";
+        if (!this.hasOrg) {
+          this.message = "Select an organization in Settings first.";
           return false;
         }
         this.message = "Working...";
         const response = await fetch(path, {
           method: "POST",
+          credentials: "include",
           headers: this.headers(),
           body: JSON.stringify(body),
         });
@@ -204,8 +272,12 @@
         return this.post(`/admin/review/rules/${ruleId}/discard`);
       },
       toggleEdit(ruleId) {
-        this.editingRuleId = this.editingRuleId === ruleId ? null : ruleId;
+        this.editingRuleId = ruleId;
         this.edits[ruleId] = this.edits[ruleId] || "";
+      },
+      cancelEdit(ruleId) {
+        this.editingRuleId = null;
+        this.edits[ruleId] = "";
       },
       async submitEdit(ruleId) {
         const editText = (this.edits[ruleId] || "").trim();
