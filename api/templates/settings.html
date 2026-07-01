@@ -24,7 +24,7 @@
       <p class="mt-2 text-sm text-stone-500">Create a new organization and get your free API key, or enter an existing API key above.</p>
     </div>
 
-    <div class="border-t border-stone-200 pt-5">
+    <div class="border border-stone-200 p-6">
       <div class="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
         <div>
           <h3 class="font-semibold">Create organization</h3>
@@ -39,10 +39,10 @@
           <button @click="createOrganization()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Create & get API key</button>
           <div x-show="generatedKey" x-cloak class="mt-4 space-y-3 border-t border-stone-200 pt-4">
             <p class="text-sm font-semibold text-emerald-700">Organization created successfully!</p>
-            <div>
+            <div class="border border-emerald-200 bg-emerald-50 p-4">
               <label class="text-xs font-semibold uppercase tracking-wide text-stone-500">Your API key (save this securely!)</label>
               <div class="mt-2 flex gap-2">
-                <input x-model="generatedKey" readonly type="text" class="h-10 min-w-0 flex-1 border-b border-emerald-500 bg-transparent text-sm outline-none" />
+                <input x-model="generatedKey" readonly type="text" class="h-10 min-w-0 flex-1 border-b border-emerald-500 bg-transparent text-sm font-mono outline-none" />
                 <button @click="copyToClipboard(generatedKey)" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Copy</button>
               </div>
               <p class="mt-2 text-xs text-stone-600">This is the only time you'll see this key. Copy it now and use it above to access your workspace.</p>
@@ -60,7 +60,7 @@
       <p class="mt-1 text-sm text-stone-500" x-text="settings.organization.id"></p>
     </div>
 
-    <div class="border-t border-stone-200 pt-5">
+    <div class="border border-stone-200 p-6">
       <div class="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
         <div>
           <h2 class="font-semibold">API keys</h2>
@@ -68,7 +68,7 @@
         </div>
 
         <div class="space-y-5">
-          <div>
+          <div class="border border-stone-200 bg-stone-50 p-4">
             <div class="flex items-end gap-3">
               <div class="flex-1">
                 <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="key-name">New key name</label>
@@ -78,7 +78,7 @@
             </div>
             <div x-show="newlyGeneratedKey" x-cloak class="mt-4 space-y-3 border-t border-stone-200 pt-4">
               <p class="text-sm font-semibold text-emerald-700">New API key generated!</p>
-              <div>
+              <div class="border border-emerald-200 bg-emerald-50 p-4">
                 <label class="text-xs font-semibold uppercase tracking-wide text-stone-500">API key (copy now!)</label>
                 <div class="mt-2 flex gap-2">
                   <input x-model="newlyGeneratedKey" readonly type="text" class="h-10 min-w-0 flex-1 border-b border-emerald-500 bg-transparent text-sm font-mono outline-none" />
@@ -89,12 +89,12 @@
             </div>
           </div>
 
-          <div class="border-t border-stone-200 pt-5">
-            <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Existing keys</p>
-            <div x-show="apiKeys.length === 0" class="mt-2 text-sm text-stone-500">No API keys yet.</div>
-            <div x-show="apiKeys.length > 0" class="mt-2 divide-y divide-stone-100 border-y border-stone-200">
+          <div>
+            <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-stone-500">Existing keys</p>
+            <div x-show="apiKeys.length === 0" class="border border-stone-200 p-4 text-sm text-stone-500">No API keys yet.</div>
+            <div x-show="apiKeys.length > 0" class="divide-y divide-stone-100 border border-stone-200">
               <template x-for="key in apiKeys" :key="key.id">
-                <div class="py-3">
+                <div class="p-4">
                   <div class="flex items-start justify-between gap-4">
                     <div class="min-w-0">
                       <p class="text-sm font-medium text-stone-950" x-text="key.name"></p>
@@ -113,7 +113,7 @@
       </div>
     </div>
 
-    <div class="border-t border-stone-200 pt-5">
+    <div class="border border-stone-200 p-6">
       <div class="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
         <div>
           <h2 class="font-semibold">Decision delivery</h2>
@@ -124,23 +124,23 @@
           <div class="grid gap-4 sm:grid-cols-2">
             <button
               @click="setSlackEnabled(true)"
-              class="border-t border-stone-200 pt-4 text-left"
-              :class="settings.organization.slack_notifications_enabled ? 'text-stone-950' : 'text-stone-500'"
+              class="border border-stone-200 p-4 text-left"
+              :class="settings.organization.slack_notifications_enabled ? 'border-stone-950 bg-stone-50 text-stone-950' : 'text-stone-500 hover:border-stone-300'"
             >
               <span class="block text-sm font-semibold">Slack + dashboard</span>
               <span class="mt-1 block text-sm">Slack cards are sent when Slack is configured.</span>
             </button>
             <button
               @click="setSlackEnabled(false)"
-              class="border-t border-stone-200 pt-4 text-left"
-              :class="!settings.organization.slack_notifications_enabled ? 'text-stone-950' : 'text-stone-500'"
+              class="border border-stone-200 p-4 text-left"
+              :class="!settings.organization.slack_notifications_enabled ? 'border-stone-950 bg-stone-50 text-stone-950' : 'text-stone-500 hover:border-stone-300'"
             >
               <span class="block text-sm font-semibold">Dashboard only</span>
               <span class="mt-1 block text-sm">New decisions stay in the dashboard review queue.</span>
             </button>
           </div>
 
-          <div class="border-t border-stone-200 pt-5">
+          <div class="border border-stone-200 bg-stone-50 p-4">
             <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="slack-channel">Slack channel ID</label>
             <div class="mt-2 flex flex-col gap-3 sm:flex-row">
               <input id="slack-channel" x-model="slackChannelId" placeholder="C0123456789" class="h-10 min-w-0 flex-1 border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />

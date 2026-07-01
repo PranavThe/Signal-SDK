@@ -9,20 +9,20 @@
   <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Agent autonomy</h1>
 </header>
 
-<section class="grid border-y border-stone-200 sm:grid-cols-2 sm:divide-x sm:divide-stone-200 xl:grid-cols-4">
-  <div class="py-5 sm:px-5 sm:first:pl-0">
+<section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  <div class="border border-stone-200 p-5">
     <p class="text-sm text-stone-500">Total agent decisions today</p>
     <p class="mt-3 text-3xl font-semibold tracking-tight">{{ stats.total_decisions_today }}</p>
   </div>
-  <div class="border-t border-stone-200 py-5 sm:border-t-0 sm:px-5">
+  <div class="border border-stone-200 p-5">
     <p class="text-sm text-stone-500">Handled automatically</p>
     <p class="mt-3 text-3xl font-semibold tracking-tight">{{ stats.auto_handled_today }}</p>
   </div>
-  <div class="border-t border-stone-200 py-5 sm:px-5 xl:border-t-0">
+  <div class="border border-stone-200 p-5">
     <p class="text-sm text-stone-500">Escalations today</p>
     <p class="mt-3 text-3xl font-semibold tracking-tight">{{ stats.escalations_today }}</p>
   </div>
-  <div class="border-t border-stone-200 py-5 sm:px-5 xl:border-t-0">
+  <div class="border border-stone-200 p-5">
     <p class="text-sm text-stone-500">Autonomy score</p>
     <p class="mt-3 text-3xl font-semibold tracking-tight">{{ stats.autonomy_score }}</p>
   </div>
@@ -65,10 +65,10 @@
       <p class="mt-1 text-sm text-stone-500">Pending rule consolidation ideas.</p>
     </div>
   </div>
-  <p x-show="message" x-text="message" class="border-t border-stone-100 py-3 text-sm text-stone-600"></p>
-  <div class="border-y border-stone-200 divide-y divide-stone-100">
+  <p x-show="message" x-text="message" class="mb-3 border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+  <div class="space-y-3">
     {% for suggestion in suggestions %}
-    <div class="py-4">
+    <div class="border border-stone-200 p-4">
       <div class="grid gap-4 lg:grid-cols-[1fr_auto]">
         <div>
           <p class="text-sm font-medium text-stone-950">{{ suggestion.merged_condition }}</p>
@@ -79,20 +79,22 @@
       </div>
     </div>
     {% else %}
-    <p class="py-8 text-sm text-stone-500">No pending suggestions.</p>
+    <div class="border border-stone-200 p-8 text-center">
+      <p class="text-sm text-stone-500">No pending suggestions.</p>
+    </div>
     {% endfor %}
   </div>
 </section>
 
-<section class="grid gap-10 xl:grid-cols-2">
+<section class="grid gap-6 xl:grid-cols-2">
   <div class="border-t border-stone-200 pt-5">
     <div class="flex items-center justify-between pb-4">
       <h2 class="font-semibold">Active rules</h2>
       <a href="/dashboard/rules" class="text-sm font-medium text-stone-600 hover:text-stone-950">View all</a>
     </div>
-    <div class="border-y border-stone-200 divide-y divide-stone-100">
+    <div class="space-y-3">
       {% for rule in active_rules %}
-      <a href="/dashboard/rules/{{ rule.id }}" class="block py-4 hover:text-stone-950">
+      <a href="/dashboard/rules/{{ rule.id }}" class="block border border-stone-200 p-4 hover:border-stone-300">
         <div class="flex items-start justify-between gap-4">
           <p class="text-sm font-medium text-stone-950">{{ rule.condition }}</p>
           <span class="shrink-0 text-xs font-semibold uppercase text-emerald-700">{{ rule.action }}</span>
@@ -100,7 +102,9 @@
         <p class="mt-2 text-sm text-stone-500">{{ rule.trigger_count }} triggers · last {{ rule.last_triggered }}</p>
       </a>
       {% else %}
-      <p class="py-8 text-sm text-stone-500">No active rules yet.</p>
+      <div class="border border-stone-200 p-8 text-center">
+        <p class="text-sm text-stone-500">No active rules yet.</p>
+      </div>
       {% endfor %}
     </div>
   </div>
@@ -110,9 +114,9 @@
       <h2 class="font-semibold">Recent escalations</h2>
       <a href="/dashboard/escalations" class="text-sm font-medium text-stone-600 hover:text-stone-950">View all</a>
     </div>
-    <div class="border-y border-stone-200 divide-y divide-stone-100">
+    <div class="space-y-3">
       {% for escalation in recent_escalations %}
-      <div class="py-4">
+      <div class="border border-stone-200 p-4">
         <div class="flex items-start justify-between gap-4">
           <p class="text-sm font-medium text-stone-950">{{ escalation.context }}</p>
           <span class="shrink-0 text-xs font-semibold uppercase text-stone-500">{{ escalation.status }}</span>
@@ -120,7 +124,9 @@
         <p class="mt-2 text-sm text-stone-500">{{ escalation.human_decision }} · {{ escalation.time_ago }}</p>
       </div>
       {% else %}
-      <p class="py-8 text-sm text-stone-500">No escalations yet.</p>
+      <div class="border border-stone-200 p-8 text-center">
+        <p class="text-sm text-stone-500">No escalations yet.</p>
+      </div>
       {% endfor %}
     </div>
   </div>
