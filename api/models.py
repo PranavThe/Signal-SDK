@@ -28,6 +28,10 @@ class Organization(Base):
     slack_notifications_enabled: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
     webhook_url: Mapped[str | None] = mapped_column(Text)
     webhook_secret: Mapped[str | None] = mapped_column(Text)
+    stripe_customer_id: Mapped[str | None] = mapped_column(Text)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(Text)
+    billing_status: Mapped[str] = mapped_column(Text, nullable=False, default="inactive", server_default="inactive")
+    billing_current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -35,6 +39,32 @@ class Organization(Base):
     )
 
     api_keys: Mapped[list["ApiKey"]] = relationship("ApiKey", back_populates="organization")
+    dashboard_memberships: Mapped[list["DashboardOrgMembership"]] = relationship(
+        "DashboardOrgMembership",
+        back_populates="organization",
+    )
+
+
+class DashboardOrgMembership(Base):
+    __tablename__ = "dashboard_org_memberships"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False, default="owner", server_default="owner")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    organization: Mapped[Organization] = relationship("Organization", back_populates="dashboard_memberships")
 
 
 class ApiKey(Base):

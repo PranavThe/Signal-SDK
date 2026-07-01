@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import AuthContext, require_api_key
+from api.dashboard_auth import require_dashboard_org_auth
 from api.database import get_session
 from api.models import ConsolidationSuggestion, Rule
 from api.services.embedding_service import embed, save_rule_embedding
@@ -38,11 +39,10 @@ async def trigger_consolidation(
     return await run_consolidation()
 
 
-@router.post("/v1/consolidation/{suggestion_id}/accept")
-async def accept_consolidation_suggestion(
+async def _accept_consolidation_suggestion(
     suggestion_id: UUID,
-    session: AsyncSession = Depends(get_session),
-    auth: AuthContext = Depends(require_api_key),
+    session: AsyncSession,
+    auth: AuthContext,
 ) -> dict[str, str]:
     suggestion = (
         await session.execute(
@@ -108,6 +108,24 @@ async def accept_consolidation_suggestion(
         "merged_rule_id": str(merged_rule.id),
         "status": suggestion.status,
     }
+
+
+@router.post("/v1/consolidation/{suggestion_id}/accept")
+async def accept_consolidation_suggestion(
+    suggestion_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_key),
+) -> dict[str, str]:
+    return await _accept_consolidation_suggestion(suggestion_id, session, auth)
+
+
+@router.post("/admin/consolidation/{suggestion_id}/accept")
+async def accept_dashboard_consolidation_suggestion(
+    suggestion_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+) -> dict[str, str]:
+    return await _accept_consolidation_suggestion(suggestion_id, session, auth)
 
 
 def _merge_structured_conditions(rule_a: Rule, rule_b: Rule) -> list[dict[str, Any]]:

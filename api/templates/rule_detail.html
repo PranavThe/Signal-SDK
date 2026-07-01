@@ -8,9 +8,9 @@
   <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Rule detail</h1>
 </header>
 
-<section class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-  <div class="space-y-6">
-    <div class="border border-stone-200 p-6">
+<section class="grid gap-10 xl:grid-cols-[minmax(0,1fr)_360px]">
+  <div class="space-y-10">
+    <div class="border-t border-stone-200 pt-5">
       <div class="mb-4 flex flex-wrap items-center gap-2">
         <span class="text-xs font-semibold uppercase tracking-wide text-emerald-700">{{ rule.status }}</span>
         <span class="text-sm text-stone-500">{{ rule.confidence }} confidence · {{ rule.trigger_count }} triggers</span>
@@ -25,9 +25,9 @@
 
     <div class="border-t border-stone-200 pt-5">
       <h2 class="mb-4 font-semibold">Matched policy checks</h2>
-      <div class="space-y-3">
+      <div class="border-y border-stone-200 divide-y divide-stone-100">
         {% for check in checks %}
-        <div class="border border-stone-200 p-4">
+        <div class="py-4">
           <div class="flex items-start justify-between gap-4">
             <p class="font-medium">{{ check.action }} · {{ check.result }}</p>
             <span class="text-sm text-stone-500">{{ check.time }}</span>
@@ -35,16 +35,14 @@
           <p class="mt-2 text-sm text-stone-600">{{ check.reasoning }}</p>
         </div>
         {% else %}
-        <div class="border border-stone-200 p-6 text-center">
-          <p class="text-sm text-stone-500">No matched checks yet.</p>
-        </div>
+        <p class="py-6 text-sm text-stone-500">No matched checks yet.</p>
         {% endfor %}
       </div>
     </div>
   </div>
 
-  <aside class="space-y-6">
-    <div class="border border-stone-200 p-5">
+  <aside class="space-y-10">
+    <div class="border-t border-stone-200 pt-5">
       <h2 class="font-semibold">Structured conditions</h2>
       <ul class="mt-4 divide-y divide-stone-100 border-y border-stone-200 text-sm text-stone-700">
         {% for condition in rule.structured_conditions %}
@@ -58,10 +56,10 @@
         {% endfor %}
       </ul>
       <h2 class="mt-6 font-semibold">Structured action</h2>
-      <pre class="mt-4 overflow-auto border border-stone-200 bg-stone-50 p-3 text-xs text-stone-700">{{ rule.structured_action | tojson(indent=2) }}</pre>
+      <pre class="mt-4 overflow-auto border-y border-stone-200 py-3 text-xs text-stone-700">{{ rule.structured_action | tojson(indent=2) }}</pre>
     </div>
 
-    <div class="border border-stone-200 p-5">
+    <div class="border-t border-stone-200 pt-5">
       <h2 class="font-semibold">Source escalation</h2>
       {% if source_escalation %}
       <p class="mt-3 text-sm text-stone-600">{{ source_escalation.time }} · {{ source_escalation.agent_id }}</p>

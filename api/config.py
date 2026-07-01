@@ -26,6 +26,11 @@ class Settings:
     voyage_api_key: str | None = None
     redis_url: str = "redis://localhost:6379/0"
     app_timezone: str = "America/Los_Angeles"
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_price_id: str = ""
 
 
 def _load_dotenv_files() -> None:
@@ -66,6 +71,11 @@ def load_settings() -> Settings:
         voyage_api_key=os.getenv("VOYAGE_API_KEY"),
         redis_url=_redis_url(),
         app_timezone=os.getenv("APP_TIMEZONE", "America/Los_Angeles"),
+        supabase_url=os.getenv("SUPABASE_URL", "").rstrip("/"),
+        supabase_anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
+        stripe_secret_key=os.getenv("STRIPE_SECRET_KEY", ""),
+        stripe_webhook_secret=os.getenv("STRIPE_WEBHOOK_SECRET", ""),
+        stripe_price_id=os.getenv("STRIPE_PRICE_ID", ""),
     )
 
 

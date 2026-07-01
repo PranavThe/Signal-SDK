@@ -16,7 +16,7 @@ from api.models import ApiKey
 @dataclass(frozen=True)
 class AuthContext:
     org_id: UUID
-    api_key_id: UUID
+    api_key_id: UUID | None
     key_prefix: str
 
 

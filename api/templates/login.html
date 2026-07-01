@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Signal Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>[x-cloak] { display: none !important; }</style>
+  </head>
+  <body class="bg-white text-stone-950 antialiased">
+    <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
+      <div class="border-y border-stone-200 py-8">
+        <img src="/static/signal-logo.png" alt="Signal" class="h-8 w-auto max-w-[148px] object-contain object-left" style="filter: invert(1);" />
+        <div x-data="loginForm()" x-init="init()" class="mt-10 space-y-6">
+          <div>
+            <p class="text-sm font-medium text-stone-500">Dashboard</p>
+            <h1 class="mt-1 text-2xl font-semibold tracking-tight" x-text="mode === 'sign_in' ? 'Sign in to Signal' : 'Create your account'"></h1>
+          </div>
+
+          <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+
+          <div class="flex gap-5 border-b border-stone-200 pb-3">
+            <button @click="setMode('sign_in')" type="button" class="text-sm font-semibold underline-offset-4 hover:underline" :class="mode === 'sign_in' ? 'text-stone-950 underline' : 'text-stone-500'">Sign in</button>
+            <button @click="setMode('sign_up')" type="button" class="text-sm font-semibold underline-offset-4 hover:underline" :class="mode === 'sign_up' ? 'text-stone-950 underline' : 'text-stone-500'">Create account</button>
+          </div>
+
+          <form @submit.prevent="submit()" class="space-y-4">
+            <div>
+              <label for="email" class="text-xs font-semibold uppercase tracking-wide text-stone-500">Email</label>
+              <input id="email" x-model="email" type="email" autocomplete="email" required class="mt-2 h-11 w-full border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />
+            </div>
+            <div>
+              <label for="password" class="text-xs font-semibold uppercase tracking-wide text-stone-500">Password</label>
+              <input id="password" x-model="password" type="password" :autocomplete="mode === 'sign_in' ? 'current-password' : 'new-password'" required minlength="8" class="mt-2 h-11 w-full border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />
+            </div>
+            <button type="submit" :disabled="loading" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:text-stone-300 disabled:no-underline" x-text="loading ? 'Working...' : (mode === 'sign_in' ? 'Sign in' : 'Create account')"></button>
+          </form>
+
+          <button
+            x-show="canResendConfirmation"
+            x-cloak
+            @click="resendConfirmation()"
+            type="button"
+            :disabled="loading"
+            class="text-sm font-semibold text-stone-600 underline-offset-4 hover:text-stone-950 hover:underline disabled:cursor-not-allowed disabled:text-stone-300 disabled:no-underline"
+          >
+            Resend confirmation email
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      function loginForm() {
+        return {
+          mode: "sign_in",
+          email: "",
+          password: "",
+          message: "",
+          loading: false,
+          canResendConfirmation: false,
+          client: null,
+          async init() {
+            const configResponse = await fetch("/dashboard/auth/config");
+            const config = await configResponse.json();
+            if (!config.configured) {
+              this.message = "Dashboard authentication is not configured yet.";
+              return;
+            }
+            this.client = window.supabase.createClient(config.supabase_url, config.supabase_anon_key);
+
+            const params = new URLSearchParams(window.location.search);
+            if (params.get("confirmed") === "1") {
+              this.message = "Email confirmed. Sign in with your password.";
+              window.history.replaceState({}, document.title, "/login");
+            }
+
+            if (params.get("signed_out") === "1") {
+              try {
+                await this.client.auth.signOut({ scope: "local" });
+              } finally {
+                this.clearStoredSupabaseSessions(config.supabase_url);
+              }
+              window.history.replaceState({}, document.title, "/login");
+              this.message = "Signed out.";
+              return;
+            }
+
+            const { data } = await this.client.auth.getSession();
+            if (data.session?.access_token) {
+              await this.createServerSession(data.session.access_token);
+            }
+          },
+          async createServerSession(accessToken) {
+            const response = await fetch("/dashboard/session", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${accessToken}` },
+            });
+            if (!response.ok) {
+              this.message = "Could not create dashboard session.";
+              return;
+            }
+            window.location.href = "/dashboard";
+          },
+          setMode(mode) {
+            this.mode = mode;
+            this.message = "";
+            this.canResendConfirmation = false;
+          },
+          async submit() {
+            if (this.mode === "sign_up") {
+              await this.createAccount();
+              return;
+            }
+            await this.signIn();
+          },
+          async signIn() {
+            if (!this.client) return;
+            this.loading = true;
+            const { data, error } = await this.client.auth.signInWithPassword({
+              email: this.email,
+              password: this.password,
+            });
+            this.loading = false;
+            if (error) {
+              this.message = error.message;
+              return;
+            }
+            this.canResendConfirmation = false;
+            if (data.session?.access_token) {
+              await this.createServerSession(data.session.access_token);
+              return;
+            }
+            this.message = "Could not start a dashboard session.";
+          },
+          async createAccount() {
+            if (!this.client) return;
+            if (this.password.length < 8) {
+              this.message = "Use at least 8 characters for your password.";
+              return;
+            }
+            this.loading = true;
+            const { data, error } = await this.client.auth.signUp({
+              email: this.email,
+              password: this.password,
+              options: {
+                emailRedirectTo: this.confirmationRedirectUrl(),
+              },
+            });
+            this.loading = false;
+            if (error) {
+              this.message = error.message;
+              return;
+            }
+            if (data.session?.access_token) {
+              try {
+                await this.client.auth.signOut({ scope: "local" });
+              } finally {
+                const configResponse = await fetch("/dashboard/auth/config");
+                const config = await configResponse.json();
+                this.clearStoredSupabaseSessions(config.supabase_url);
+              }
+              this.canResendConfirmation = false;
+              this.message = "Account created, but Supabase did not require email confirmation, so no confirmation email was sent. Turn on Confirm email in Supabase Authentication settings.";
+              return;
+            }
+            if (Array.isArray(data.user?.identities) && data.user.identities.length === 0) {
+              this.canResendConfirmation = true;
+              this.message = "An account may already exist for this email. Sign in, or resend the confirmation email if the account is not confirmed yet.";
+              return;
+            }
+            this.mode = "sign_in";
+            this.password = "";
+            this.canResendConfirmation = true;
+            this.message = "Account created. Check your email to confirm it, then sign in with your password.";
+          },
+          confirmationRedirectUrl() {
+            return `${window.location.origin}/login?confirmed=1`;
+          },
+          async resendConfirmation() {
+            if (!this.client) return;
+            if (!this.email) {
+              this.message = "Enter your email first.";
+              return;
+            }
+            this.loading = true;
+            const { error } = await this.client.auth.resend({
+              type: "signup",
+              email: this.email,
+              options: {
+                emailRedirectTo: this.confirmationRedirectUrl(),
+              },
+            });
+            this.loading = false;
+            this.message = error ? error.message : "Confirmation email sent. Check your inbox.";
+          },
+          clearStoredSupabaseSessions(supabaseUrl) {
+            try {
+              const projectRef = new URL(supabaseUrl).hostname.split(".")[0];
+              localStorage.removeItem(`sb-${projectRef}-auth-token`);
+              Object.keys(localStorage)
+                .filter((key) => key.startsWith("sb-") && key.endsWith("-auth-token"))
+                .forEach((key) => localStorage.removeItem(key));
+            } catch {}
+          },
+        };
+      }
+    </script>
+  </body>
+</html>
