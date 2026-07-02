@@ -513,14 +513,16 @@ async def _overview_data(session: AsyncSession, org_id: UUID | None) -> dict[str
     ).mappings().all()
     trend = []
     for row in trend_rows:
-        total = int(row["total_decisions"])
         auto = int(row["auto_handled"])
+        escalations = int(row["escalations"])
+        # Total decisions = auto-handled + escalations (consistent with main metrics)
+        total = auto + escalations
         trend.append(
             {
                 "date": row["day"].strftime("%b %-d"),
                 "total_decisions": total,
                 "auto_handled": auto,
-                "escalations": int(row["escalations"]),
+                "escalations": escalations,
                 "autonomy": f"{(auto / total * 100) if total else 0:.1f}%",
             }
         )
