@@ -671,7 +671,11 @@ Your autonomy score increases!
 
 ### Total Agent Decisions
 
-Count of all `signalops.escalate()` calls made today.
+Sum of auto-handled decisions and escalations today. Every decision is either handled automatically by a rule or escalated to a human, so:
+
+```
+Total Decisions = Auto-Handled + Escalations
+```
 
 ### Auto-Handled
 
