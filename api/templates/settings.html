@@ -41,7 +41,10 @@
           <div>
             <p class="text-sm font-semibold text-stone-950" x-text="settings.organization.name"></p>
             <p class="mt-1 text-sm text-stone-500">This workspace is selected.</p>
-            <button @click="switchOpen = !switchOpen" class="mt-4 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline" x-text="switchOpen ? 'Hide switch workspace' : 'Switch workspace'"></button>
+            <div class="mt-4 flex flex-wrap gap-3">
+              <button @click="createNewOpen = !createNewOpen; switchOpen = false;" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline" x-text="createNewOpen ? 'Hide create new' : 'Create new workspace'"></button>
+              <button @click="switchOpen = !switchOpen; createNewOpen = false;" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline" x-text="switchOpen ? 'Hide switch workspace' : 'Switch workspace'"></button>
+            </div>
           </div>
         </template>
 
@@ -55,6 +58,14 @@
             <button @click="createOrganization()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Create workspace</button>
           </div>
           <button @click="switchOpen = !switchOpen" class="text-sm font-semibold text-stone-600 underline-offset-4 hover:underline" x-text="switchOpen ? 'Hide existing workspace' : 'Already have an API key?'"></button>
+        </div>
+
+        <div x-show="createNewOpen && settings" x-cloak class="mt-5 flex flex-col gap-3 border-t border-stone-200 pt-5 sm:flex-row sm:items-end">
+          <div class="min-w-0 flex-1">
+            <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="new-org-name-existing">New workspace name</label>
+            <input id="new-org-name-existing" x-model="newOrgName" placeholder="Acme Corp" class="mt-2 h-10 w-full border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />
+          </div>
+          <button @click="createOrganization()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Create workspace</button>
         </div>
 
         <div x-show="switchOpen" x-cloak class="mt-5 flex flex-col gap-3 border-t border-stone-200 pt-5 sm:flex-row sm:items-end">
@@ -250,6 +261,7 @@
       newlyGeneratedKey: "",
       apiKeys: [],
       switchOpen: false,
+      createNewOpen: false,
       advancedOpen: false,
       headers() {
         return {
@@ -289,6 +301,7 @@
         }
         this.switchApiKey = "";
         this.switchOpen = false;
+        this.createNewOpen = false;
         this.message = `Switched to ${org.name}.`;
         await Promise.all([this.loadSettings(), this.loadApiKeys()]);
       },
@@ -314,6 +327,7 @@
         this.apiKeys = [];
         this.newlyGeneratedKey = "";
         this.switchOpen = false;
+        this.createNewOpen = false;
         this.slackChannelId = this.settings.organization.slack_channel_id || "";
         window.signalRememberOrg(data.organization || this.settings.organization);
         this.message = data.message || `Created ${this.settings.organization.name}.`;
