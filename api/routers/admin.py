@@ -449,12 +449,6 @@ async def _overview_data(session: AsyncSession, org_id: UUID | None) -> dict[str
 
     today_start = _today_start_utc()
     trend_start = today_start - timedelta(days=6)
-    total_decisions_today = await _count(
-        session,
-        select(func.count())
-        .select_from(PolicyCheckLog)
-        .where(PolicyCheckLog.created_at >= today_start, PolicyCheckLog.org_id == org_id),
-    )
     auto_handled_today = await _count(
         session,
         select(func.count())
@@ -471,6 +465,8 @@ async def _overview_data(session: AsyncSession, org_id: UUID | None) -> dict[str
         .select_from(Escalation)
         .where(Escalation.created_at >= today_start, Escalation.org_id == org_id),
     )
+    # Total decisions = auto-handled + escalations (every decision is one or the other)
+    total_decisions_today = auto_handled_today + escalations_today
     autonomy_score = (auto_handled_today / total_decisions_today * 100) if total_decisions_today else 0
 
     trend_rows = (
