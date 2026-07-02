@@ -391,7 +391,7 @@
 
         // Try to parse as field-value pairs
         // Look for patterns like "Field: value" or "Field = value"
-        const lines = context.split(/[.\n]/).filter(line => line.trim());
+        const lines = context.split(/\n/).filter(line => line.trim());
         const parsed = [];
 
         for (const line of lines) {
