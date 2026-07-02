@@ -8,3 +8,6 @@ venv/
 dist/
 build/
 .vercel/
+.master-test.env
+signal-website/node_modules/
+signal-website/dist/

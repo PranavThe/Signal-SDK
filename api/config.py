@@ -40,18 +40,22 @@ def _load_dotenv_files() -> None:
 
 
 def _redis_url() -> str:
-    explicit_url = os.getenv("REDIS_URL")
+    explicit_url = os.getenv("REDIS_URL", "").strip()
     if explicit_url:
         return explicit_url
 
-    upstash_rest_url = os.getenv("UPSTASH_REDIS_REST_URL")
-    upstash_rest_token = os.getenv("UPSTASH_REDIS_REST_TOKEN")
+    upstash_rest_url = os.getenv("UPSTASH_REDIS_REST_URL", "").strip()
+    upstash_rest_token = os.getenv("UPSTASH_REDIS_REST_TOKEN", "").strip()
     if upstash_rest_url and upstash_rest_token:
         host = urlparse(upstash_rest_url).hostname
         if host:
             return f"rediss://default:{quote(upstash_rest_token, safe='')}@{host}:6379"
 
     return "redis://localhost:6379/0"
+
+
+def _env(name: str, default: str = "") -> str:
+    return os.getenv(name, default).strip()
 
 
 def load_settings() -> Settings:
@@ -62,20 +66,20 @@ def load_settings() -> Settings:
         raise RuntimeError(f"Missing required environment variables: {missing_list}")
 
     return Settings(
-        database_url=os.environ["DATABASE_URL"],
-        anthropic_api_key=os.environ["ANTHROPIC_API_KEY"],
-        slack_bot_token=os.getenv("SLACK_BOT_TOKEN", ""),
-        slack_signing_secret=os.getenv("SLACK_SIGNING_SECRET", ""),
-        slack_channel_id=os.getenv("SLACK_CHANNEL_ID", ""),
-        api_base_url=os.environ["API_BASE_URL"].rstrip("/"),
-        voyage_api_key=os.getenv("VOYAGE_API_KEY"),
+        database_url=_env("DATABASE_URL"),
+        anthropic_api_key=_env("ANTHROPIC_API_KEY"),
+        slack_bot_token=_env("SLACK_BOT_TOKEN"),
+        slack_signing_secret=_env("SLACK_SIGNING_SECRET"),
+        slack_channel_id=_env("SLACK_CHANNEL_ID"),
+        api_base_url=_env("API_BASE_URL").rstrip("/"),
+        voyage_api_key=_env("VOYAGE_API_KEY") or None,
         redis_url=_redis_url(),
-        app_timezone=os.getenv("APP_TIMEZONE", "America/Los_Angeles"),
-        supabase_url=os.getenv("SUPABASE_URL", "").rstrip("/"),
-        supabase_anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
-        stripe_secret_key=os.getenv("STRIPE_SECRET_KEY", ""),
-        stripe_webhook_secret=os.getenv("STRIPE_WEBHOOK_SECRET", ""),
-        stripe_price_id=os.getenv("STRIPE_PRICE_ID", ""),
+        app_timezone=_env("APP_TIMEZONE", "America/Los_Angeles"),
+        supabase_url=_env("SUPABASE_URL").rstrip("/"),
+        supabase_anon_key=_env("SUPABASE_ANON_KEY"),
+        stripe_secret_key=_env("STRIPE_SECRET_KEY"),
+        stripe_webhook_secret=_env("STRIPE_WEBHOOK_SECRET"),
+        stripe_price_id=_env("STRIPE_PRICE_ID"),
     )
 
 

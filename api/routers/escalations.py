@@ -14,7 +14,7 @@ from api.database import get_session
 from api.models import Escalation, PolicyCheckLog, Rule
 from api.rate_limit import limiter
 from api.schemas import EscalationCreate, EscalationCreateResponse, EscalationStateResponse
-from api.services.escalation_pipeline import prepare_escalation_slack_card
+from api.services.escalation_pipeline import prepare_escalation_semantics, prepare_escalation_slack_card
 from api.services.redis_service import publish_escalation_created, subscribe_escalation_events
 from api.services.webhook_service import send_webhook_event_by_org_id
 
@@ -103,6 +103,8 @@ async def create_escalation(
                 overridden_rule.override_count += 1
 
     await session.commit()
+
+    await prepare_escalation_semantics(str(escalation.id))
 
     background_tasks.add_task(publish_escalation_created, escalation)
     background_tasks.add_task(prepare_escalation_slack_card, str(escalation.id))

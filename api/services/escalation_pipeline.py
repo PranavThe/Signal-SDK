@@ -21,18 +21,21 @@ def slack_delivery_available(org: Organization | None = None) -> bool:
     return bool((org and org.slack_channel_id) or settings.slack_channel_id)
 
 
-async def prepare_escalation_surfaces(escalation_id: str) -> None:
+async def prepare_escalation_semantics(escalation_id: str, *, raise_errors: bool = False) -> list[dict]:
     async with AsyncSessionLocal() as session:
         escalation = await session.get(Escalation, escalation_id)
         if escalation is None:
-            return
+            return []
 
-        similar_decisions = []
         try:
-            embedding = await embed(escalation.context)
-            await save_escalation_embedding(session, str(escalation.id), embedding)
-            await session.commit()
-            similar_decisions = await find_similar_escalations(
+            if escalation.context_embedding is None:
+                embedding = await embed(escalation.context)
+                await save_escalation_embedding(session, str(escalation.id), embedding)
+                await session.commit()
+            else:
+                embedding = list(escalation.context_embedding)
+
+            return await find_similar_escalations(
                 session,
                 embedding,
                 str(escalation.id),
@@ -41,10 +44,18 @@ async def prepare_escalation_surfaces(escalation_id: str) -> None:
         except Exception:
             logger.exception("Could not prepare semantic context for escalation %s", escalation_id)
             await session.rollback()
-            escalation = await session.get(Escalation, escalation_id)
-            if escalation is None:
-                return
+            if raise_errors:
+                raise
+            return []
 
+
+async def prepare_escalation_surfaces(escalation_id: str) -> None:
+    similar_decisions = await prepare_escalation_semantics(escalation_id)
+
+    async with AsyncSessionLocal() as session:
+        escalation = await session.get(Escalation, escalation_id)
+        if escalation is None:
+            return
         org = await session.get(Organization, escalation.org_id) if escalation.org_id else None
         if not slack_delivery_available(org):
             return

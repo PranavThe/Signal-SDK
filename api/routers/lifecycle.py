@@ -10,10 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import AuthContext, require_api_key
+from api.config import settings
 from api.dashboard_auth import require_dashboard_org_auth
 from api.database import get_session
-from api.models import ConsolidationSuggestion, Rule
+from api.models import ConsolidationSuggestion, Escalation, Rule
 from api.services.embedding_service import embed, save_rule_embedding
+from api.services.escalation_pipeline import prepare_escalation_semantics
 from api.services.lifecycle_service import run_consolidation, run_staleness_check
 from api.services.webhook_service import send_webhook_event_by_org_id
 
@@ -37,6 +39,63 @@ async def trigger_consolidation(
 ) -> dict[str, int]:
     _ = auth
     return await run_consolidation()
+
+
+@router.post("/admin/diagnostics/embedding")
+async def diagnose_embedding(
+    auth: AuthContext = Depends(require_api_key),
+) -> dict[str, Any]:
+    _ = auth
+    try:
+        embedding = await embed("Signal embedding diagnostic")
+    except Exception as exc:
+        return {
+            "ok": False,
+            "voyage_configured": bool(settings.voyage_api_key),
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:500],
+        }
+    return {
+        "ok": True,
+        "voyage_configured": bool(settings.voyage_api_key),
+        "dimensions": len(embedding),
+    }
+
+
+@router.post("/admin/diagnostics/escalations/{escalation_id}/semantics")
+async def diagnose_escalation_semantics(
+    escalation_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_key),
+) -> dict[str, Any]:
+    escalation = (
+        await session.execute(
+            select(Escalation).where(
+                Escalation.id == escalation_id,
+                Escalation.org_id == auth.org_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if escalation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Escalation not found")
+
+    try:
+        similar = await prepare_escalation_semantics(str(escalation.id), raise_errors=True)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "voyage_configured": bool(settings.voyage_api_key),
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:500],
+        }
+
+    await session.refresh(escalation)
+    return {
+        "ok": escalation.context_embedding is not None,
+        "voyage_configured": bool(settings.voyage_api_key),
+        "embedding_saved": escalation.context_embedding is not None,
+        "similar_decision_count": len(similar),
+    }
 
 
 async def _accept_consolidation_suggestion(

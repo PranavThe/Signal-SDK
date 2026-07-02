@@ -23,6 +23,62 @@ Use prefixed test data:
 
 Clean up or archive QA rules after destructive tests. Avoid running staleness checks repeatedly against production org data because they send Slack messages.
 
+## Master QA Suite
+
+Run the broad one-command suite:
+
+```bash
+python -u scripts/master_test.py
+```
+
+The master suite creates temporary QA organizations/API keys, verifies core behavior against those isolated orgs, and cleans them up by default.
+
+It automatically covers:
+
+- Health, pgvector schema, dashboard auth boundary, logo asset.
+- API key auth, old dev-key rejection, org isolation.
+- Policy matching for proceed/block/modify, agent scope, policy logs, trigger counters.
+- Rule pause/activate/archive/delete.
+- Runtime conflict handling and activation conflict `409` details.
+- pgvector similar-rule lookup and similar past decision lookup.
+- Escalation creation and polling fallback.
+- Override detection, staleness scan, consolidation accept.
+- Webhook HMAC signature shape.
+- Python `signalops.check()` package API.
+
+Optional deeper checks:
+
+```bash
+# Live Voyage/background embedding checks
+python -u scripts/master_test.py --with-ai
+
+# Dashboard login, org selection, settings, API-key paywall, logout
+SIGNAL_DASHBOARD_EMAIL="you@example.com" \
+SIGNAL_DASHBOARD_PASSWORD="password" \
+python -u scripts/master_test.py
+
+# Hosted Redis/SSE auto-finalization checks require the local runner to point at the same Redis as the hosted API.
+UPSTASH_REDIS_REST_URL="..." \
+UPSTASH_REDIS_REST_TOKEN="..." \
+python -u scripts/master_test.py
+
+# Stripe webhook simulation and checkout URL creation
+python -u scripts/master_test.py --with-stripe-webhook --with-stripe-checkout
+
+# TypeScript SDK build
+python -u scripts/master_test.py --with-typescript
+
+# Noisy rate-limit check
+python -u scripts/master_test.py --include-rate-limit
+
+# Human Slack/dashboard review checkpoint
+python -u scripts/master_test.py --with-manual-review --interactive
+```
+
+Use `--strict-skips` when you want CI-like behavior where skipped optional coverage fails the run.
+
+The runner prints a final PASS/FAIL/SKIP/CHECK summary. A normal hosted run may skip Redis/SSE auto-finalization unless local `REDIS_URL`/Upstash env matches production, because otherwise the test runner cannot publish the final event into the API server's Redis channel.
+
 ## Automated Smoke Suite
 
 Run:
