@@ -9,7 +9,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>[x-cloak] { display: none !important; }</style>
   </head>
-  <body class="bg-white text-stone-950 antialiased">
+  <body class="overflow-x-hidden bg-white text-stone-950 antialiased">
     <div class="min-h-screen lg:flex">
       <aside class="border-b border-stone-200 lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-64 lg:flex-col lg:border-b-0 lg:border-r">
         <div class="flex h-16 items-start justify-start px-5 pt-4 lg:h-20 lg:pt-5">
@@ -18,17 +18,28 @@
           </a>
         </div>
         <nav class="flex gap-5 overflow-x-auto px-5 pb-4 lg:block lg:flex-1 lg:space-y-1 lg:overflow-visible">
-          <a href="/dashboard" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'overview' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Overview</a>
+          {% if nav_scope == 'org' %}
+          <a href="/dashboard" class="block border-l-0 py-2 text-sm font-medium text-stone-500 hover:text-stone-950 lg:border-l-2 lg:border-transparent lg:pl-3">Organizations</a>
+          <div class="hidden py-2 lg:block"></div>
+          <a href="/dashboard/overview" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'overview' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Overview</a>
           <a href="/dashboard/review" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'review' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Review</a>
           <a href="/dashboard/rules" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'rules' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Rules</a>
           <a href="/dashboard/escalations" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'escalations' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Escalations</a>
-          <a href="/dashboard/settings" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'settings' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Settings</a>
+          <a href="/dashboard/settings" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'settings' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Organization Settings</a>
+          {% else %}
+          <a href="/dashboard" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'organizations' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Organizations</a>
+          <a href="/dashboard/account" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'account_settings' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Account Settings</a>
+          {% endif %}
         </nav>
         <div x-data="dashboardShell('{{ current_org.org_name if current_org else '' }}')" x-init="init()" class="hidden border-t border-stone-200 px-5 py-4 lg:block">
           <div class="space-y-2 text-sm">
             <p class="text-stone-500">{{ dashboard_user.email if dashboard_user else '' }}</p>
-            <a href="/dashboard/settings" class="block font-semibold text-stone-950 underline-offset-4 hover:underline" x-show="orgName" x-text="orgName"></a>
-            <a href="/dashboard/settings" class="block font-semibold text-stone-500 underline-offset-4 hover:underline" x-show="!orgName">Select organization</a>
+            {% if nav_scope == 'org' %}
+            <a href="/dashboard" class="block font-semibold text-stone-950 underline-offset-4 hover:underline" x-show="orgName" x-text="orgName"></a>
+            <a href="/dashboard" class="block font-semibold text-stone-500 underline-offset-4 hover:underline" x-show="!orgName">Select organization</a>
+            {% else %}
+            <a href="/dashboard/account" class="block font-semibold text-stone-950 underline-offset-4 hover:underline">Account</a>
+            {% endif %}
             <button @click="logout()" class="block font-semibold text-stone-500 underline-offset-4 hover:underline">Sign out</button>
           </div>
         </div>
@@ -36,6 +47,15 @@
 
       <main class="min-w-0 lg:ml-64 lg:flex-1">
         <div class="mx-auto min-w-0 max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          {% if nav_scope == 'org' %}
+          <div class="mb-6 flex justify-end">
+            {% if current_org %}
+            <a href="/dashboard" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">{{ current_org.org_name }}</a>
+            {% else %}
+            <a href="/dashboard" class="text-sm font-semibold text-stone-500 underline-offset-4 hover:underline">Select organization</a>
+            {% endif %}
+          </div>
+          {% endif %}
           {% block content %}{% endblock %}
         </div>
       </main>
@@ -57,12 +77,13 @@
         };
       }
 
-      window.signalSelectOrg = async function(apiKey, options = {}) {
+      window.signalSelectOrg = async function(value, options = {}) {
+        const payload = options.by === "org_id" ? { org_id: value } : { api_key: value };
         const response = await fetch("/dashboard/org-session", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ api_key: apiKey }),
+          body: JSON.stringify(payload),
         });
         if (!response.ok) return null;
         const data = await response.json();

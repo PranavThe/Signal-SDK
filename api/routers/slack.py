@@ -21,6 +21,7 @@ from api.models import Escalation, Rule
 from api.services.conflict_service import ConflictService
 from api.services.embedding_service import embed, save_rule_embedding
 from api.services.extraction_service import ExtractionService
+from api.services.lifecycle_service import run_consolidation
 from api.services.redis_service import publish_escalation_response
 from api.services.resolution_propagator import propagate_rule
 from api.services.slack_service import SlackService
@@ -283,6 +284,7 @@ async def process_slack_action(action_id: str, value: str) -> None:
                 if escalation is not None:
                     await _publish_final_escalation_result(escalation)
                 asyncio.create_task(propagate_rule(rule.id, rule.org_id))
+                asyncio.create_task(run_consolidation(org_id=rule.org_id, max_pairs_per_org=50))
                 await send_webhook_event_by_org_id(
                     rule.org_id,
                     "rule.created",

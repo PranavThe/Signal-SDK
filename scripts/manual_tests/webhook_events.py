@@ -23,7 +23,7 @@ from sqlalchemy import delete
 
 from api.auth import hash_api_key
 from api.database import AsyncSessionLocal
-from api.models import ApiKey, ConsolidationSuggestion, Organization, PolicyCheckLog, Rule
+from api.models import Account, ApiKey, ConsolidationSuggestion, Organization, PolicyCheckLog, Rule
 
 
 async def main() -> None:
@@ -73,7 +73,15 @@ async def main() -> None:
 async def trigger_rule_created_and_triggered(base_url: str, api_key: str, org_id, run_id: str) -> None:
     raw_key = "sk_live_" + "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(32))
     async with AsyncSessionLocal() as session:
-        qa_org = Organization(name=f"QA webhook transient {run_id}", webhook_url=None, webhook_secret=None)
+        qa_account = Account(name=f"QA webhook transient {run_id} account", plan_tier="free", billing_status="active")
+        session.add(qa_account)
+        await session.flush()
+        qa_org = Organization(
+            name=f"QA webhook transient {run_id}",
+            account_id=qa_account.id,
+            webhook_url=None,
+            webhook_secret=None,
+        )
         session.add(qa_org)
         await session.flush()
         session.add(ApiKey(org_id=qa_org.id, key_hash=hash_api_key(raw_key), key_prefix=raw_key[:8], name="QA"))
@@ -112,6 +120,7 @@ async def trigger_rule_created_and_triggered(base_url: str, api_key: str, org_id
         )
         session.add(suggestion)
         await session.commit()
+        qa_account_id = qa_account.id
         qa_org_id = qa_org.id
         suggestion_id = suggestion.id
 
@@ -145,6 +154,7 @@ async def trigger_rule_created_and_triggered(base_url: str, api_key: str, org_id
             await session.execute(delete(Rule).where(Rule.org_id == qa_org_id))
             await session.execute(delete(ApiKey).where(ApiKey.org_id == qa_org_id))
             await session.execute(delete(Organization).where(Organization.id == qa_org_id))
+            await session.execute(delete(Account).where(Account.id == qa_account_id))
             await session.commit()
 
 

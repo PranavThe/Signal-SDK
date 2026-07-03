@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from api.database import get_session
 from api.models import ConsolidationSuggestion, Escalation, PolicyCheckLog, Rule, RuleConflict
 from api.schemas import RuleDeleteRequest, RuleStatusUpdate
 from api.services.conflict_service import ConflictService
+from api.services.lifecycle_service import run_consolidation
 
 
 router = APIRouter(prefix="/v1/rules", tags=["rules"])
@@ -103,6 +105,8 @@ async def update_rule_status(
     rule.status = request.status
     rule.updated_at = datetime.now(UTC)
     await session.commit()
+    if request.status == "active":
+        asyncio.create_task(run_consolidation(org_id=auth.org_id, max_pairs_per_org=50))
 
     return {"rule_id": str(rule.id), "status": rule.status}
 

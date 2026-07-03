@@ -1,408 +1,203 @@
 {% extends "base.html" %}
 
-{% block title %}Signal Settings{% endblock %}
+{% block title %}Signal Organization Settings{% endblock %}
 
 {% block content %}
-<div x-data="dashboardSettings()" x-init="load()" class="space-y-8">
-  <header>
-    <p class="text-sm font-medium text-stone-500">Settings</p>
-    <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Workspace</h1>
+<div x-data="organizationSettings()" x-init="load()" class="space-y-8">
+  <header class="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+    <div>
+      <p class="text-sm font-medium text-stone-500">Organization</p>
+      <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Organization Settings</h1>
+    </div>
+    <a href="/dashboard" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Switch organization</a>
   </header>
 
-  <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+  <p x-show="pageMessage" x-text="pageMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
 
-  <section class="grid border-y border-stone-200 sm:grid-cols-2 sm:divide-x sm:divide-stone-200 xl:grid-cols-4">
-    <div class="py-5 sm:px-5 sm:first:pl-0">
-      <p class="text-sm text-stone-500">Workspace</p>
-      <p class="mt-3 text-xl font-semibold tracking-tight text-stone-950" x-text="workspaceName()"></p>
-    </div>
-    <div class="border-t border-stone-200 py-5 sm:border-t-0 sm:px-5">
-      <p class="text-sm text-stone-500">Subscription</p>
-      <p class="mt-3 text-xl font-semibold tracking-tight" :class="settings?.billing?.active ? 'text-emerald-700' : 'text-stone-950'" x-text="subscriptionStatus()"></p>
-    </div>
-    <div class="border-t border-stone-200 py-5 sm:px-5 xl:border-t-0">
-      <p class="text-sm text-stone-500">API keys</p>
-      <p class="mt-3 text-xl font-semibold tracking-tight text-stone-950" x-text="apiKeyStatus()"></p>
-    </div>
-    <div class="border-t border-stone-200 py-5 sm:px-5 xl:border-t-0">
-      <p class="text-sm text-stone-500">Decision review</p>
-      <p class="mt-3 text-xl font-semibold tracking-tight text-stone-950" x-text="reviewMode()"></p>
-    </div>
-  </section>
+  <template x-if="settings && !settings.organization">
+    <section class="border-y border-stone-200 py-8">
+      <h2 class="font-semibold">No organization selected</h2>
+      <p class="mt-2 text-sm text-stone-500">Choose an organization before changing review settings or creating API keys.</p>
+      <a href="/dashboard" class="mt-5 inline-block text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Go to organizations</a>
+    </section>
+  </template>
 
-  <section class="space-y-0 border-y border-stone-200">
-    <div class="grid gap-6 py-6 lg:grid-cols-[180px_minmax(0,1fr)]">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Step 1</p>
-        <p class="mt-2 font-semibold" x-text="settings ? 'Workspace ready' : 'Create workspace'"></p>
-      </div>
-      <div class="min-w-0">
-        <template x-if="settings">
-          <div>
-            <p class="text-sm font-semibold text-stone-950" x-text="settings.organization.name"></p>
-            <p class="mt-1 text-sm text-stone-500">This workspace is selected.</p>
-            <div class="mt-4 flex flex-wrap gap-3">
-              <button @click="createNewOpen = !createNewOpen; switchOpen = false;" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline" x-text="createNewOpen ? 'Hide create new' : 'Create new workspace'"></button>
-              <button @click="switchOpen = !switchOpen; createNewOpen = false;" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline" x-text="switchOpen ? 'Hide switch workspace' : 'Switch workspace'"></button>
-            </div>
-          </div>
-        </template>
-
-        <div x-show="!settings" x-cloak class="space-y-4">
-          <p class="text-sm text-stone-600">Create a workspace to start using Signal.</p>
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div class="min-w-0 flex-1">
-              <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="new-org-name">Workspace name</label>
-              <input id="new-org-name" x-model="newOrgName" placeholder="Acme Corp" class="mt-2 h-10 w-full border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />
-            </div>
-            <button @click="createOrganization()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Create workspace</button>
-          </div>
-          <button @click="switchOpen = !switchOpen" class="text-sm font-semibold text-stone-600 underline-offset-4 hover:underline" x-text="switchOpen ? 'Hide existing workspace' : 'Already have an API key?'"></button>
+  <template x-if="settings?.organization">
+    <div class="space-y-6">
+      <section class="grid gap-4 sm:grid-cols-3">
+        <div class="border border-stone-200 p-5">
+          <p class="text-sm text-stone-500">Organization</p>
+          <p class="mt-3 text-xl font-semibold tracking-tight text-stone-950" x-text="settings.organization.name"></p>
         </div>
-
-        <div x-show="createNewOpen && settings" x-cloak class="mt-5 flex flex-col gap-3 border-t border-stone-200 pt-5 sm:flex-row sm:items-end">
-          <div class="min-w-0 flex-1">
-            <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="new-org-name-existing">New workspace name</label>
-            <input id="new-org-name-existing" x-model="newOrgName" placeholder="Acme Corp" class="mt-2 h-10 w-full border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />
-          </div>
-          <button @click="createOrganization()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Create workspace</button>
+        <div class="border border-stone-200 p-5">
+          <p class="text-sm text-stone-500">Review mode</p>
+          <p class="mt-3 text-xl font-semibold tracking-tight text-stone-950" x-text="reviewMode()"></p>
         </div>
-
-        <div x-show="switchOpen" x-cloak class="mt-5 flex flex-col gap-3 border-t border-stone-200 pt-5 sm:flex-row sm:items-end">
-          <div class="min-w-0 flex-1">
-            <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="org-api-key">Organization API key</label>
-            <input id="org-api-key" x-model="switchApiKey" type="password" placeholder="sk_live_..." class="mt-2 h-10 w-full border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />
-          </div>
-          <button @click="selectOrganization()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Switch workspace</button>
+        <div class="border border-stone-200 p-5">
+          <p class="text-sm text-stone-500">API keys</p>
+          <p class="mt-3 text-xl font-semibold tracking-tight text-stone-950" x-text="apiKeyUsage()"></p>
         </div>
-      </div>
-    </div>
+      </section>
 
-    <div class="grid gap-6 border-t border-stone-200 py-6 lg:grid-cols-[180px_minmax(0,1fr)]" :class="!settings ? 'text-stone-400' : ''">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Step 2</p>
-        <p class="mt-2 font-semibold" x-text="settings?.billing?.active ? 'Subscription active' : 'Start subscription'"></p>
-      </div>
-      <div class="min-w-0">
-        <template x-if="!settings">
-          <p class="text-sm">Create or select a workspace first.</p>
-        </template>
-        <template x-if="settings && settings.billing.active">
-          <div>
-            <p class="text-sm font-semibold text-emerald-700">Signal Free Beta is active.</p>
-            <p class="mt-1 text-sm text-stone-500">API key creation is enabled for this workspace.</p>
-          </div>
-        </template>
-        <template x-if="settings && !settings.billing.active">
-          <div class="space-y-4">
-            <p class="text-sm text-stone-600">Signal requires an active subscription before API keys can be created.</p>
-            <div class="grid gap-4 border-y border-stone-200 py-4 sm:grid-cols-2">
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Current plan</p>
-                <p class="mt-2 text-sm font-semibold text-stone-950">Signal Free Beta</p>
-              </div>
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Price</p>
-                <p class="mt-2 text-sm font-semibold text-stone-950">$0/month</p>
-              </div>
+      <details open class="border-t border-stone-200 pt-5">
+        <summary class="cursor-pointer list-none">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="font-semibold">API keys</h2>
+              <p class="mt-1 text-sm text-stone-500">Create keys for apps, environments, or agents inside this organization.</p>
             </div>
-            <button @click="startSubscription()" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Start subscription</button>
+            <span class="text-sm font-semibold text-stone-950" x-text="apiKeyUsage()"></span>
           </div>
-        </template>
-      </div>
-    </div>
+        </summary>
 
-    <div class="grid gap-6 border-t border-stone-200 py-6 lg:grid-cols-[180px_minmax(0,1fr)]" :class="!settings?.billing?.active ? 'text-stone-400' : ''">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Step 3</p>
-        <p class="mt-2 font-semibold" x-text="apiKeys.length > 0 ? 'API key ready' : 'Create API key'"></p>
-      </div>
-      <div class="min-w-0">
-        <template x-if="!settings">
-          <p class="text-sm">Create or select a workspace first.</p>
-        </template>
-        <template x-if="settings && !settings.billing.active && apiKeys.length === 0">
-          <p class="text-sm">Start your subscription first.</p>
-        </template>
-        <template x-if="settings && apiKeys.length > 0">
-          <div>
-            <p class="text-sm font-semibold text-emerald-700" x-text="`${apiKeys.length} ${apiKeys.length === 1 ? 'API key is' : 'API keys are'} available.`"></p>
-            <p class="mt-1 text-sm text-stone-500">Your agents can now call Signal.</p>
+        <div class="mt-5 space-y-5">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button @click="newKeyOpen = !newKeyOpen; keyMessage = ''" :disabled="!canCreateApiKey()" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300 disabled:no-underline" x-text="newKeyOpen ? 'Cancel new key' : 'Add new key'"></button>
+            <p x-show="settings && !canCreateApiKey()" x-cloak class="text-sm text-stone-500">This organization has reached the API key limit for your account plan. Upgrade in Account Settings to add more.</p>
           </div>
-        </template>
-        <template x-if="settings && settings.billing.active && apiKeys.length === 0">
-          <div class="space-y-4">
-            <p class="text-sm text-stone-600">API keys let your agents call Signal from code.</p>
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div class="min-w-0 flex-1">
-                <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="first-key-name">Key name</label>
-                <input id="first-key-name" x-model="newKeyName" placeholder="Production" class="mt-2 h-10 w-full border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />
-              </div>
-              <button @click="generateNewKey()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Create API key</button>
-            </div>
-          </div>
-        </template>
+          <p x-show="keyMessage" x-text="keyMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
 
-        <div x-show="newlyGeneratedKey" x-cloak class="mt-5 border-l-2 border-emerald-600 pl-3">
-          <p class="text-sm font-semibold text-emerald-700">New API key created. Copy it now.</p>
-          <div class="mt-2 flex gap-3">
-            <input x-model="newlyGeneratedKey" readonly type="text" class="h-10 min-w-0 flex-1 border-b border-emerald-600 bg-transparent font-mono text-sm outline-none" />
-            <button @click="copyToClipboard(newlyGeneratedKey)" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Copy</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section x-show="setupComplete()" x-cloak class="space-y-10">
-    <div class="grid gap-6 border-t border-stone-200 pt-5 lg:grid-cols-[180px_minmax(0,1fr)]">
-      <div>
-        <h2 class="font-semibold">API keys</h2>
-        <p class="mt-1 text-sm text-stone-500">Existing keys are shown by prefix only.</p>
-      </div>
-      <div class="space-y-5">
-        <div class="divide-y divide-stone-100 border-y border-stone-200">
-          <template x-for="key in apiKeys" :key="key.id">
-            <div class="py-4">
-              <div class="flex items-start justify-between gap-4">
-                <div class="min-w-0">
-                  <p class="text-sm font-medium text-stone-950" x-text="key.name"></p>
-                  <p class="mt-1 font-mono text-xs text-stone-500" x-text="key.key_prefix + '...'"></p>
-                </div>
-                <div class="shrink-0 text-right text-xs text-stone-500">
-                  <p x-text="'Created ' + formatDate(key.created_at)"></p>
-                  <p x-show="key.last_used_at" x-text="'Used ' + formatDate(key.last_used_at)"></p>
+          <div class="divide-y divide-stone-100 border-y border-stone-200">
+            <template x-for="key in apiKeys" :key="key.id">
+              <div class="py-4">
+                <div class="flex items-start justify-between gap-4">
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium text-stone-950" x-text="key.name"></p>
+                    <p class="mt-1 font-mono text-xs text-stone-500" x-text="key.key_prefix + '...'"></p>
+                  </div>
+                  <div class="shrink-0 text-right text-xs text-stone-500">
+                    <p x-text="'Created ' + formatDate(key.created_at)"></p>
+                    <p x-show="key.last_used_at" x-text="'Used ' + formatDate(key.last_used_at)"></p>
+                  </div>
                 </div>
               </div>
+            </template>
+            <p x-show="apiKeys.length === 0" x-cloak class="py-6 text-sm text-stone-500">No API keys for this organization.</p>
+          </div>
+
+          <div x-show="newlyGeneratedKey" x-cloak class="border-l-2 border-emerald-600 pl-3">
+            <p class="text-sm font-semibold text-emerald-700">New API key created. Copy it now.</p>
+            <div class="mt-2 flex gap-3">
+              <input x-model="newlyGeneratedKey" readonly type="text" class="h-10 min-w-0 flex-1 border-b border-emerald-600 bg-transparent font-mono text-sm outline-none" />
+              <button @click="copyToClipboard(newlyGeneratedKey)" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Copy</button>
             </div>
-          </template>
-        </div>
-
-        <div class="flex flex-col gap-3 border-t border-stone-200 pt-5 sm:flex-row sm:items-end">
-          <div class="min-w-0 flex-1">
-            <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="another-key-name">New key name</label>
-            <input id="another-key-name" x-model="newKeyName" placeholder="Production" class="mt-2 h-10 w-full border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />
           </div>
-          <button @click="generateNewKey()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Create another key</button>
+
+          <div x-show="newKeyOpen" x-cloak class="grid gap-4 border border-stone-200 p-4 lg:grid-cols-[1fr_auto] lg:items-end">
+            <div>
+              <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="new-key-name">New key name</label>
+              <input id="new-key-name" x-model="newKeyName" :disabled="!canCreateApiKey()" placeholder="Production" class="mt-2 h-10 w-full border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950 disabled:text-stone-400" />
+            </div>
+            <button @click="generateNewKey()" :disabled="!canCreateApiKey()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300 disabled:no-underline">Create API key</button>
+          </div>
         </div>
-      </div>
+      </details>
+
+      <details class="border-t border-stone-200 pt-5">
+        <summary class="cursor-pointer list-none">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="font-semibold">Decision review</h2>
+              <p class="mt-1 text-sm text-stone-500">Choose whether humans review escalations only in Signal or also in Slack.</p>
+            </div>
+            <span class="text-sm font-semibold text-stone-950" x-text="reviewMode()"></span>
+          </div>
+        </summary>
+
+        <div class="mt-5 space-y-5">
+          <p x-show="reviewMessage" x-text="reviewMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <button
+              @click="setSlackEnabled(false)"
+              class="border p-4 text-left transition hover:border-stone-950"
+              :class="!settings.organization.slack_notifications_enabled ? 'border-stone-950 bg-stone-50 text-stone-950' : 'border-stone-200 text-stone-500'"
+            >
+              <span class="block text-sm font-semibold">Dashboard only</span>
+              <span class="mt-1 block text-sm">Keep all review work inside the dashboard.</span>
+            </button>
+            <button
+              @click="setSlackEnabled(true)"
+              class="border p-4 text-left transition hover:border-stone-950"
+              :class="settings.organization.slack_notifications_enabled ? 'border-stone-950 bg-stone-50 text-stone-950' : 'border-stone-200 text-stone-500'"
+            >
+              <span class="block text-sm font-semibold">Slack + dashboard</span>
+              <span class="mt-1 block text-sm">Send Slack cards while keeping dashboard review available.</span>
+            </button>
+          </div>
+
+          <div x-show="settings.organization.slack_notifications_enabled" x-cloak class="border-t border-stone-200 pt-5">
+            <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="slack-channel">Slack channel ID</label>
+            <div class="mt-2 flex flex-col gap-3 sm:flex-row">
+              <input id="slack-channel" x-model="slackChannelId" placeholder="C0123456789" class="h-10 min-w-0 flex-1 border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />
+              <button @click="saveSlackChannel()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Save channel</button>
+            </div>
+            <p class="mt-2 text-sm text-stone-500" x-text="slackStatus()"></p>
+          </div>
+        </div>
+      </details>
     </div>
-
-    <div class="grid gap-6 border-t border-stone-200 pt-5 lg:grid-cols-[180px_minmax(0,1fr)]">
-      <div>
-        <h2 class="font-semibold">Decision review</h2>
-        <p class="mt-1 text-sm text-stone-500">Choose where new human decisions appear.</p>
-      </div>
-      <div class="space-y-5">
-        <div class="grid gap-4 sm:grid-cols-2">
-          <button
-            @click="setSlackEnabled(false)"
-            class="border-t border-stone-200 pt-4 text-left"
-            :class="!settings.organization.slack_notifications_enabled ? 'text-stone-950' : 'text-stone-500'"
-          >
-            <span class="block text-sm font-semibold">Dashboard only</span>
-            <span class="mt-1 block text-sm">Review decisions in Signal.</span>
-          </button>
-          <button
-            @click="setSlackEnabled(true)"
-            class="border-t border-stone-200 pt-4 text-left"
-            :class="settings.organization.slack_notifications_enabled ? 'text-stone-950' : 'text-stone-500'"
-          >
-            <span class="block text-sm font-semibold">Slack + dashboard</span>
-            <span class="mt-1 block text-sm">Send Slack cards when Slack is configured.</span>
-          </button>
-        </div>
-
-        <div x-show="settings.organization.slack_notifications_enabled" x-cloak class="border-t border-stone-200 pt-5">
-          <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="slack-channel">Slack channel ID</label>
-          <div class="mt-2 flex flex-col gap-3 sm:flex-row">
-            <input id="slack-channel" x-model="slackChannelId" placeholder="C0123456789" class="h-10 min-w-0 flex-1 border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />
-            <button @click="saveSlackChannel()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Save channel</button>
-          </div>
-          <p class="mt-2 text-sm text-stone-500" x-text="slackStatus()"></p>
-        </div>
-      </div>
-    </div>
-
-    <div class="grid gap-6 border-t border-stone-200 pt-5 lg:grid-cols-[180px_minmax(0,1fr)]">
-      <div>
-        <h2 class="font-semibold">Advanced</h2>
-      </div>
-      <div>
-        <button @click="advancedOpen = !advancedOpen" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline" x-text="advancedOpen ? 'Hide advanced' : 'Show advanced'"></button>
-        <div x-show="advancedOpen" x-cloak class="mt-5 divide-y divide-stone-100 border-y border-stone-200">
-          <div class="py-3">
-            <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Workspace ID</p>
-            <p class="mt-1 break-all font-mono text-xs text-stone-600" x-text="settings.organization.id"></p>
-          </div>
-          <div class="py-3">
-            <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Stripe customer</p>
-            <p class="mt-1 break-all font-mono text-xs text-stone-600" x-text="settings.billing.stripe_customer_id || 'Not created yet'"></p>
-          </div>
-          <div class="py-3">
-            <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Webhook URL</p>
-            <p class="mt-1 break-all font-mono text-xs text-stone-600" x-text="settings.organization.webhook_url || 'Not configured'"></p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+  </template>
 </div>
 
 <script>
-  function dashboardSettings() {
+  function organizationSettings() {
     return {
-      switchApiKey: "",
-      newOrgName: "",
       settings: null,
-      slackChannelId: "",
-      message: "",
+      apiKeys: [],
       newKeyName: "",
       newlyGeneratedKey: "",
-      apiKeys: [],
-      switchOpen: false,
-      createNewOpen: false,
-      advancedOpen: false,
+      slackChannelId: "",
+      pageMessage: "",
+      keyMessage: "",
+      reviewMessage: "",
+      newKeyOpen: false,
+      refreshInterval: null,
       headers() {
-        return {
-          "Content-Type": "application/json",
-        };
+        return { "Content-Type": "application/json" };
       },
       async failureMessage(response, fallback) {
         try {
           const data = await response.json();
-          if (typeof data?.detail === "string") return data.detail.replaceAll("checkout", "subscription");
-          if (data?.detail?.message) return data.detail.message.replaceAll("checkout", "subscription");
+          if (typeof data?.detail === "string") return data.detail;
+          if (data?.detail?.message) return data.detail.message;
         } catch {}
         return fallback;
       },
       async load() {
-        await Promise.all([this.loadSettings(), this.loadApiKeys()]);
-        const params = new URLSearchParams(window.location.search);
-        if (params.get("billing") === "success") {
-          this.message = "Subscription started. If the status has not updated yet, refresh in a few seconds.";
-          window.history.replaceState({}, document.title, "/dashboard/settings");
-        }
-        if (params.get("billing") === "cancelled") {
-          this.message = "Subscription was not started.";
-          window.history.replaceState({}, document.title, "/dashboard/settings");
-        }
-      },
-      async selectOrganization() {
-        const apiKey = this.switchApiKey.trim();
-        if (!apiKey) {
-          this.message = "Enter an organization API key first.";
-          return;
-        }
-        const org = await window.signalSelectOrg(apiKey, { reload: false });
-        if (!org) {
-          this.message = "That API key did not match an organization.";
-          return;
-        }
-        this.switchApiKey = "";
-        this.switchOpen = false;
-        this.createNewOpen = false;
-        this.message = `Switched to ${org.name}.`;
-        await Promise.all([this.loadSettings(), this.loadApiKeys()]);
-      },
-      async createOrganization() {
-        const organizationName = this.newOrgName.trim();
-        if (!organizationName) {
-          this.message = "Enter a workspace name first.";
-          return;
-        }
-        const response = await fetch("/admin/setup", {
-          method: "POST",
-          credentials: "include",
-          headers: this.headers(),
-          body: JSON.stringify({ organization_name: organizationName }),
+        await this.loadSettings();
+        await this.loadApiKeys();
+        this.refreshInterval = setInterval(() => this.refresh(), 5000);
+        window.addEventListener("beforeunload", () => {
+          if (this.refreshInterval) clearInterval(this.refreshInterval);
         });
-        if (!response.ok) {
-          this.message = await this.failureMessage(response, `Could not create workspace (${response.status}).`);
-          return;
-        }
-        const data = await response.json();
-        this.newOrgName = "";
-        this.settings = data.settings;
-        this.apiKeys = [];
-        this.newlyGeneratedKey = "";
-        this.switchOpen = false;
-        this.createNewOpen = false;
-        this.slackChannelId = this.settings.organization.slack_channel_id || "";
-        window.signalRememberOrg(data.organization || this.settings.organization);
-        this.message = data.message || `Created ${this.settings.organization.name}.`;
       },
-      async loadSettings() {
+      async refresh() {
+        await this.loadSettings(true);
+        await this.loadApiKeys();
+      },
+      async loadSettings(silent = false) {
         const response = await fetch("/admin/settings", {
           credentials: "include",
           headers: this.headers(),
         });
         if (!response.ok) {
-          if (response.status !== 401) {
-            this.message = await this.failureMessage(response, `Could not load settings (${response.status}).`);
+          if (!silent && response.status !== 401) {
+            this.pageMessage = await this.failureMessage(response, `Could not load settings (${response.status}).`);
           }
           return;
         }
         this.settings = await response.json();
-        this.slackChannelId = this.settings.organization.slack_channel_id || "";
-        this.message = "";
-      },
-      async patch(body) {
-        const response = await fetch("/admin/settings", {
-          method: "PATCH",
-          credentials: "include",
-          headers: this.headers(),
-          body: JSON.stringify(body),
-        });
-        if (!response.ok) {
-          this.message = await this.failureMessage(response, `Could not save settings (${response.status}).`);
-          return;
+        if (this.settings.organization) {
+          this.slackChannelId = this.settings.organization.slack_channel_id || "";
+          window.signalRememberOrg(this.settings.organization);
         }
-        this.settings = await response.json();
-        this.slackChannelId = this.settings.organization.slack_channel_id || "";
-        this.message = "Settings saved.";
-      },
-      setSlackEnabled(enabled) {
-        return this.patch({ slack_notifications_enabled: enabled });
-      },
-      saveSlackChannel() {
-        return this.patch({ slack_channel_id: this.slackChannelId });
-      },
-      async startSubscription() {
-        const response = await fetch("/admin/billing/checkout", {
-          method: "POST",
-          credentials: "include",
-          headers: this.headers(),
-        });
-        if (!response.ok) {
-          this.message = await this.failureMessage(response, `Could not start subscription (${response.status}).`);
-          return;
-        }
-        const data = await response.json();
-        window.location.href = data.url;
-      },
-      async generateNewKey() {
-        if (!this.newKeyName.trim()) {
-          this.message = "Enter a name for the new key.";
-          return;
-        }
-        const response = await fetch("/admin/api-keys/generate", {
-          method: "POST",
-          credentials: "include",
-          headers: this.headers(),
-          body: JSON.stringify({ name: this.newKeyName }),
-        });
-        if (!response.ok) {
-          this.message = await this.failureMessage(response, `Could not create key (${response.status}).`);
-          return;
-        }
-        const data = await response.json();
-        this.newlyGeneratedKey = data.api_key;
-        this.newKeyName = "";
-        this.message = data.message;
-        await this.loadApiKeys();
+        if (!silent) this.pageMessage = "";
       },
       async loadApiKeys() {
+        if (!this.settings?.organization) {
+          this.apiKeys = [];
+          return;
+        }
         const response = await fetch("/admin/api-keys", {
           credentials: "include",
           headers: this.headers(),
@@ -413,31 +208,75 @@
         }
         const data = await response.json();
         this.apiKeys = data.items || [];
+        this.settings.api_key_limits = {
+          count: data.count || this.apiKeys.length,
+          limit: data.limit || this.settings.api_key_limits?.limit || 0,
+          can_create: Boolean(data.can_create),
+        };
+      },
+      apiKeyUsage() {
+        if (!this.settings?.organization) return "-";
+        const limits = this.settings.api_key_limits || {};
+        const limit = limits.limit >= 10000 ? "Custom" : limits.limit;
+        return `${limits.count || 0} / ${limit}`;
+      },
+      reviewMode() {
+        if (!this.settings?.organization) return "-";
+        return this.settings.organization.slack_notifications_enabled ? "Slack + dashboard" : "Dashboard only";
+      },
+      canCreateApiKey() {
+        return Boolean(this.settings?.organization && this.settings?.api_key_limits?.can_create);
+      },
+      async generateNewKey() {
+        if (!this.newKeyName.trim()) {
+          this.keyMessage = "Enter a name for the new key.";
+          return;
+        }
+        const response = await fetch("/admin/api-keys/generate", {
+          method: "POST",
+          credentials: "include",
+          headers: this.headers(),
+          body: JSON.stringify({ name: this.newKeyName }),
+        });
+        if (!response.ok) {
+          this.keyMessage = await this.failureMessage(response, `Could not create key (${response.status}).`);
+          return;
+        }
+        const data = await response.json();
+        this.newlyGeneratedKey = data.api_key;
+        this.newKeyName = "";
+        this.newKeyOpen = false;
+        this.keyMessage = data.message;
+        await this.loadSettings(true);
+        await this.loadApiKeys();
+      },
+      async patch(body, target = "reviewMessage") {
+        const response = await fetch("/admin/settings", {
+          method: "PATCH",
+          credentials: "include",
+          headers: this.headers(),
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          this[target] = await this.failureMessage(response, `Could not save settings (${response.status}).`);
+          return;
+        }
+        this.settings = await response.json();
+        if (this.settings.organization) this.slackChannelId = this.settings.organization.slack_channel_id || "";
+        this[target] = "Settings saved.";
+      },
+      setSlackEnabled(enabled) {
+        return this.patch({ slack_notifications_enabled: enabled }, "reviewMessage");
+      },
+      saveSlackChannel() {
+        return this.patch({ slack_channel_id: this.slackChannelId }, "reviewMessage");
       },
       copyToClipboard(text) {
         navigator.clipboard.writeText(text).then(() => {
-          this.message = "Copied to clipboard.";
+          this.keyMessage = "Copied to clipboard.";
         }).catch(() => {
-          this.message = "Could not copy. Copy it manually.";
+          this.keyMessage = "Could not copy. Copy it manually.";
         });
-      },
-      workspaceName() {
-        return this.settings?.organization?.name || "No workspace selected";
-      },
-      subscriptionStatus() {
-        if (!this.settings) return "Not started";
-        return this.settings.billing.active ? "Active" : "Not started";
-      },
-      apiKeyStatus() {
-        const count = this.settings ? this.apiKeys.length : 0;
-        return `${count} ${count === 1 ? 'key' : 'keys'}`;
-      },
-      reviewMode() {
-        if (!this.settings) return "-";
-        return this.settings.organization.slack_notifications_enabled ? "Slack + dashboard" : "Dashboard only";
-      },
-      setupComplete() {
-        return Boolean(this.settings && this.apiKeys.length > 0);
       },
       formatDate(dateStr) {
         if (!dateStr) return "never";
@@ -453,7 +292,7 @@
         return date.toLocaleDateString();
       },
       slackStatus() {
-        if (!this.settings) return "";
+        if (!this.settings?.organization) return "";
         if (!this.settings.organization.slack_notifications_enabled) return "Dashboard only is active.";
         if (this.settings.organization.slack_configured) return "Slack delivery is active.";
         return "Slack delivery is selected, but Slack is not fully configured.";

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -17,6 +18,52 @@ from api.services.slack_service import SlackService
 
 
 logger = logging.getLogger(__name__)
+
+CONSOLIDATION_VECTOR_DISTANCE_THRESHOLD = 0.32
+CONSOLIDATION_TEXT_SIMILARITY_THRESHOLD = 0.48
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_STOP_WORDS = {
+    "about",
+    "across",
+    "action",
+    "additional",
+    "after",
+    "again",
+    "against",
+    "alert",
+    "also",
+    "and",
+    "any",
+    "apply",
+    "but",
+    "can",
+    "case",
+    "condition",
+    "does",
+    "for",
+    "from",
+    "has",
+    "have",
+    "having",
+    "into",
+    "not",
+    "other",
+    "raise",
+    "rule",
+    "same",
+    "should",
+    "signal",
+    "such",
+    "than",
+    "that",
+    "the",
+    "then",
+    "this",
+    "when",
+    "where",
+    "with",
+    "without",
+}
 
 
 def _json_from_text(text_value: str) -> dict[str, Any]:
@@ -34,6 +81,57 @@ def _text_from_message(message: Any) -> str:
         if block_type == "text":
             chunks.append(block.get("text") if isinstance(block, dict) else getattr(block, "text", ""))
     return "\n".join(chunks)
+
+
+def _tokens(text_value: str) -> set[str]:
+    return {
+        token
+        for token in _TOKEN_RE.findall(text_value.lower().replace("_", " "))
+        if (len(token) >= 4 or token.isdigit()) and token not in _STOP_WORDS
+    }
+
+
+def _dice_similarity(left: str, right: str) -> float:
+    left_tokens = _tokens(left)
+    right_tokens = _tokens(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    return 2 * len(left_tokens & right_tokens) / (len(left_tokens) + len(right_tokens))
+
+
+def _rule_text_similarity(rule_a: Rule, rule_b: Rule) -> float:
+    condition_similarity = _dice_similarity(rule_a.condition_description, rule_b.condition_description)
+    action_similarity = _dice_similarity(rule_a.action_description, rule_b.action_description)
+    exception_similarity = _dice_similarity(rule_a.exceptions_note or "", rule_b.exceptions_note or "")
+    return (condition_similarity * 0.65) + (action_similarity * 0.25) + (exception_similarity * 0.10)
+
+
+def _candidate_key(row: dict[str, Any]) -> tuple[str, str]:
+    left = str(row["rule_a_id"])
+    right = str(row["rule_b_id"])
+    return (left, right) if left < right else (right, left)
+
+
+async def _pending_suggestion_exists(session, rule_a_id: UUID, rule_b_id: UUID) -> bool:
+    return bool(
+        await session.scalar(
+            select(
+                exists().where(
+                    ConsolidationSuggestion.status == "pending",
+                    or_(
+                        and_(
+                            ConsolidationSuggestion.rule_a_id == rule_a_id,
+                            ConsolidationSuggestion.rule_b_id == rule_b_id,
+                        ),
+                        and_(
+                            ConsolidationSuggestion.rule_a_id == rule_b_id,
+                            ConsolidationSuggestion.rule_b_id == rule_a_id,
+                        ),
+                    ),
+                )
+            )
+        )
+    )
 
 
 async def run_staleness_check(include_new_rules: bool = False) -> dict[str, int]:
@@ -97,15 +195,21 @@ async def run_staleness_check(include_new_rules: bool = False) -> dict[str, int]
     return stats
 
 
-async def run_consolidation(max_pairs_per_org: int = 25) -> dict[str, int]:
+async def run_consolidation(
+    max_pairs_per_org: int = 25,
+    org_id: UUID | str | None = None,
+) -> dict[str, int]:
     stats = {"orgs": 0, "pairs_checked": 0, "suggestions_created": 0}
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     async with AsyncSessionLocal() as session:
-        orgs = (await session.execute(select(Organization))).scalars().all()
+        org_query = select(Organization)
+        if org_id is not None:
+            org_query = org_query.where(Organization.id == UUID(str(org_id)))
+        orgs = (await session.execute(org_query)).scalars().all()
         for org in orgs:
             stats["orgs"] += 1
-            rows = (
+            vector_rows = (
                 await session.execute(
                     text(
                         """
@@ -114,8 +218,10 @@ async def run_consolidation(max_pairs_per_org: int = 25) -> dict[str, int]:
                             b.id AS rule_b_id,
                             a.condition_description AS rule_a_condition,
                             a.action_description AS rule_a_action,
+                            a.exceptions_note AS rule_a_exceptions,
                             b.condition_description AS rule_b_condition,
                             b.action_description AS rule_b_action,
+                            b.exceptions_note AS rule_b_exceptions,
                             a.condition_embedding <=> b.condition_embedding AS distance
                         FROM rules a
                         JOIN rules b
@@ -126,7 +232,7 @@ async def run_consolidation(max_pairs_per_org: int = 25) -> dict[str, int]:
                           AND b.status = 'active'
                           AND a.condition_embedding IS NOT NULL
                           AND b.condition_embedding IS NOT NULL
-                          AND a.condition_embedding <=> b.condition_embedding < 0.15
+                          AND (a.condition_embedding <=> b.condition_embedding) < :distance_threshold
                           AND NOT EXISTS (
                               SELECT 1
                               FROM consolidation_suggestions cs
@@ -140,13 +246,66 @@ async def run_consolidation(max_pairs_per_org: int = 25) -> dict[str, int]:
                         LIMIT :limit
                         """
                     ),
-                    {"org_id": str(org.id), "limit": max_pairs_per_org},
+                    {
+                        "org_id": str(org.id),
+                        "distance_threshold": CONSOLIDATION_VECTOR_DISTANCE_THRESHOLD,
+                        "limit": max_pairs_per_org,
+                    },
                 )
             ).mappings().all()
 
+            rows: list[dict[str, Any]] = [dict(row) for row in vector_rows]
+            seen_pairs = {_candidate_key(row) for row in rows}
+
+            active_rules = (
+                await session.execute(
+                    select(Rule)
+                    .where(Rule.org_id == org.id, Rule.status == "active")
+                    .order_by(Rule.updated_at.desc(), Rule.created_at.desc())
+                    .limit(300)
+                )
+            ).scalars().all()
+            for index, rule_a in enumerate(active_rules):
+                if len(rows) >= max_pairs_per_org:
+                    break
+                for rule_b in active_rules[index + 1 :]:
+                    if len(rows) >= max_pairs_per_org:
+                        break
+                    key = tuple(sorted((str(rule_a.id), str(rule_b.id))))
+                    if key in seen_pairs:
+                        continue
+                    text_similarity = _rule_text_similarity(rule_a, rule_b)
+                    if text_similarity < CONSOLIDATION_TEXT_SIMILARITY_THRESHOLD:
+                        continue
+                    if await _pending_suggestion_exists(session, rule_a.id, rule_b.id):
+                        continue
+                    rows.append(
+                        {
+                            "rule_a_id": rule_a.id,
+                            "rule_b_id": rule_b.id,
+                            "rule_a_condition": rule_a.condition_description,
+                            "rule_a_action": rule_a.action_description,
+                            "rule_a_exceptions": rule_a.exceptions_note,
+                            "rule_b_condition": rule_b.condition_description,
+                            "rule_b_action": rule_b.action_description,
+                            "rule_b_exceptions": rule_b.exceptions_note,
+                            "distance": None,
+                            "text_similarity": text_similarity,
+                        }
+                    )
+                    seen_pairs.add(key)
+
             for row in rows:
                 stats["pairs_checked"] += 1
-                result = await _ask_can_merge(client, row)
+                try:
+                    result = await _ask_can_merge(client, row)
+                except Exception:
+                    logger.exception(
+                        "Could not evaluate consolidation pair %s/%s",
+                        row["rule_a_id"],
+                        row["rule_b_id"],
+                    )
+                    continue
                 if not result.get("can_merge"):
                     continue
 
@@ -170,9 +329,15 @@ async def run_consolidation(max_pairs_per_org: int = 25) -> dict[str, int]:
 
 async def _ask_can_merge(client: AsyncAnthropic, row: dict[str, Any]) -> dict[str, Any]:
     prompt = f"""Rule A: {row["rule_a_condition"]} → {row["rule_a_action"]}
+Rule A exceptions: {row.get("rule_a_exceptions") or "None"}
+
 Rule B: {row["rule_b_condition"]} → {row["rule_b_action"]}
+Rule B exceptions: {row.get("rule_b_exceptions") or "None"}
 
 Can these two rules be merged into a single clearer rule?
+Only return can_merge=true when they cover substantially overlapping situations
+and prescribe compatible behavior. If they are contradictory, return false.
+
 Respond with JSON only:
 {{
   "can_merge": true or false,

@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Signal Account Settings{% endblock %}
+
+{% block content %}
+<div x-data='accountSettings({{ account_data|tojson }})' x-init="init()" class="space-y-10">
+  <header class="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+    <div>
+      <p class="text-sm font-medium text-stone-500">Account</p>
+      <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Account Settings</h1>
+    </div>
+    <p class="text-sm text-stone-500" x-text="data.account.owner_email"></p>
+  </header>
+
+  <section class="space-y-5">
+    <div>
+      <h2 class="font-semibold">Subscriptions</h2>
+      <p class="mt-1 text-sm text-stone-500">Each step adds more workspace capacity for teams, environments, and production agents.</p>
+    </div>
+    <p x-show="subscriptionMessage" x-text="subscriptionMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+
+    <div class="grid border-y border-stone-200 lg:grid-cols-2 2xl:grid-cols-4 2xl:divide-x 2xl:divide-stone-200">
+      <template x-for="plan in data.plans" :key="plan.tier">
+        <div class="relative flex min-h-[380px] flex-col border-b border-stone-200 p-5 last:border-b-0 lg:odd:border-r lg:odd:border-stone-200 2xl:border-b-0 2xl:odd:border-r-0" :class="plan.effective ? 'z-10 font-semibold outline outline-2 -outline-offset-2 outline-stone-950' : ''">
+          <div>
+            <div class="flex items-baseline justify-between gap-3">
+              <h3 class="text-xl tracking-tight text-stone-950" :class="plan.effective ? 'font-bold' : 'font-semibold'" x-text="plan.name"></h3>
+              <span class="text-sm font-medium text-stone-500" x-text="plan.price_label"></span>
+            </div>
+            <p class="mt-2 text-sm leading-6 text-stone-600" x-text="plan.description"></p>
+          </div>
+
+          <ul class="mt-6 flex-1 space-y-3 text-sm leading-6">
+            <template x-for="feature in planFeatures(plan)" :key="feature">
+              <li class="flex gap-3">
+                <span class="mt-0.5 text-stone-950">✓</span>
+                <span class="text-stone-700" x-text="feature"></span>
+              </li>
+            </template>
+          </ul>
+
+          <div class="mt-6 border-t border-stone-200 pt-4">
+            <button
+              x-show="plan.tier === 'pro' || plan.tier === 'scale'"
+              @click="startSubscription(plan.tier)"
+              :disabled="plan.effective || upgradingTier === plan.tier"
+              class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300 disabled:no-underline"
+            >
+              <span x-show="upgradingTier !== plan.tier" x-text="plan.effective ? 'Active' : subscriptionLabel(plan)"></span>
+              <span x-show="upgradingTier === plan.tier" x-cloak>Opening...</span>
+            </button>
+            <span x-show="plan.tier === 'free'" class="text-sm text-stone-500" x-text="plan.effective ? 'Active' : 'Included'"></span>
+            <span x-show="plan.tier === 'enterprise'" class="text-sm text-stone-500">Talk to sales</span>
+          </div>
+        </div>
+      </template>
+    </div>
+  </section>
+</div>
+
+<script>
+  function accountSettings(initialData) {
+    return {
+      data: initialData,
+      subscriptionMessage: "",
+      upgradingTier: "",
+      refreshInterval: null,
+      init() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("billing") === "success") {
+          this.subscriptionMessage = "Subscription updated.";
+          window.history.replaceState({}, document.title, "/dashboard/account");
+        }
+        if (params.get("billing") === "cancelled") {
+          this.subscriptionMessage = "Subscription was not updated.";
+          window.history.replaceState({}, document.title, "/dashboard/account");
+        }
+        this.refreshInterval = setInterval(() => this.load(true), 7000);
+        window.addEventListener("beforeunload", () => {
+          if (this.refreshInterval) clearInterval(this.refreshInterval);
+        });
+      },
+      async failureMessage(response, fallback) {
+        try {
+          const data = await response.json();
+          if (typeof data?.detail === "string") return data.detail.replaceAll("checkout", "subscription");
+          if (data?.detail?.message) return data.detail.message.replaceAll("checkout", "subscription");
+        } catch {}
+        return fallback;
+      },
+      async load(silent = false) {
+        const response = await fetch("/admin/settings", { credentials: "include" });
+        if (!response.ok) {
+          if (!silent) this.subscriptionMessage = await this.failureMessage(response, `Could not load account settings (${response.status}).`);
+          return;
+        }
+        this.data = await response.json();
+      },
+      limitLabel(value) {
+        return value >= 10000 ? "Custom" : value;
+      },
+      planFeatures(plan) {
+        const orgs = `${this.limitLabel(plan.org_limit)} organization${plan.org_limit === 1 ? "" : "s"}`;
+        const keys = `${this.limitLabel(plan.api_keys_per_org)} API key${plan.api_keys_per_org === 1 ? "" : "s"} per organization`;
+        if (plan.tier === "free") {
+          return [orgs, keys, "Dashboard review", "Rules library"];
+        }
+        if (plan.tier === "pro") {
+          return [orgs, keys, "Dashboard and Slack review", "Rule lifecycle suggestions"];
+        }
+        if (plan.tier === "scale") {
+          return [orgs, keys, "More production teams and environments", "Higher API-key capacity"];
+        }
+        return ["Custom organizations", "Custom API-key limits", "SSO, retention, and support options", "Enterprise rollout support"];
+      },
+      subscriptionLabel(plan) {
+        const current = this.data.account.effective_tier || "free";
+        return current === "free" ? `Start ${plan.name}` : `Switch to ${plan.name}`;
+      },
+      async startSubscription(tier) {
+        this.upgradingTier = tier;
+        const response = await fetch("/admin/billing/checkout", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tier }),
+        });
+        this.upgradingTier = "";
+        if (!response.ok) {
+          this.subscriptionMessage = await this.failureMessage(response, `Could not update subscription (${response.status}).`);
+          return;
+        }
+        const data = await response.json();
+        window.location.href = data.url;
+      },
+    };
+  }
+</script>
+{% endblock %}

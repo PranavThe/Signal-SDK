@@ -37,8 +37,7 @@ async def trigger_staleness_check(
 async def trigger_consolidation(
     auth: AuthContext = Depends(require_api_key),
 ) -> dict[str, int]:
-    _ = auth
-    return await run_consolidation()
+    return await run_consolidation(org_id=auth.org_id)
 
 
 @router.post("/admin/diagnostics/embedding")
@@ -124,7 +123,7 @@ async def _accept_consolidation_suggestion(
         org_id=auth.org_id,
         condition_description=suggestion.merged_condition,
         action_description=suggestion.merged_action,
-        exceptions_note=f"Merged from rules {rule_a.id} and {rule_b.id}.",
+        exceptions_note="",
         structured_conditions=_merge_structured_conditions(rule_a, rule_b),
         structured_action=_merge_structured_action(rule_a, rule_b, suggestion.merged_action),
         agent_scope=_merge_agent_scope(rule_a, rule_b),
@@ -169,6 +168,32 @@ async def _accept_consolidation_suggestion(
     }
 
 
+async def _dismiss_consolidation_suggestion(
+    suggestion_id: UUID,
+    session: AsyncSession,
+    auth: AuthContext,
+) -> dict[str, str]:
+    suggestion = (
+        await session.execute(
+            select(ConsolidationSuggestion).where(
+                ConsolidationSuggestion.id == suggestion_id,
+                ConsolidationSuggestion.org_id == auth.org_id,
+                ConsolidationSuggestion.status == "pending",
+            )
+        )
+    ).scalar_one_or_none()
+    if suggestion is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Suggestion not found")
+
+    suggestion.status = "dismissed"
+    await session.commit()
+
+    return {
+        "suggestion_id": str(suggestion.id),
+        "status": suggestion.status,
+    }
+
+
 @router.post("/v1/consolidation/{suggestion_id}/accept")
 async def accept_consolidation_suggestion(
     suggestion_id: UUID,
@@ -178,6 +203,24 @@ async def accept_consolidation_suggestion(
     return await _accept_consolidation_suggestion(suggestion_id, session, auth)
 
 
+@router.post("/v1/consolidation/{suggestion_id}/dismiss")
+async def dismiss_consolidation_suggestion(
+    suggestion_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_key),
+) -> dict[str, str]:
+    return await _dismiss_consolidation_suggestion(suggestion_id, session, auth)
+
+
+@router.post("/v1/consolidation/{suggestion_id}/decline")
+async def decline_consolidation_suggestion(
+    suggestion_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_key),
+) -> dict[str, str]:
+    return await _dismiss_consolidation_suggestion(suggestion_id, session, auth)
+
+
 @router.post("/admin/consolidation/{suggestion_id}/accept")
 async def accept_dashboard_consolidation_suggestion(
     suggestion_id: UUID,
@@ -185,6 +228,24 @@ async def accept_dashboard_consolidation_suggestion(
     auth: AuthContext = Depends(require_dashboard_org_auth),
 ) -> dict[str, str]:
     return await _accept_consolidation_suggestion(suggestion_id, session, auth)
+
+
+@router.post("/admin/consolidation/{suggestion_id}/dismiss")
+async def dismiss_dashboard_consolidation_suggestion(
+    suggestion_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+) -> dict[str, str]:
+    return await _dismiss_consolidation_suggestion(suggestion_id, session, auth)
+
+
+@router.post("/admin/consolidation/{suggestion_id}/decline")
+async def decline_dashboard_consolidation_suggestion(
+    suggestion_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+) -> dict[str, str]:
+    return await _dismiss_consolidation_suggestion(suggestion_id, session, auth)
 
 
 def _merge_structured_conditions(rule_a: Rule, rule_b: Rule) -> list[dict[str, Any]]:

@@ -36,8 +36,10 @@ from api.auth import hash_api_key  # noqa: E402
 from api.config import settings  # noqa: E402
 from api.database import AsyncSessionLocal  # noqa: E402
 from api.models import (  # noqa: E402
+    Account,
     ApiKey,
     ConsolidationSuggestion,
+    DashboardAccountMembership,
     DashboardOrgMembership,
     Escalation,
     Organization,
@@ -84,6 +86,7 @@ class TestResult:
 @dataclass
 class TestOrg:
     id: UUID
+    account_id: UUID
     name: str
     api_key: str
     key_id: UUID
@@ -267,6 +270,13 @@ async def cleanup_orgs(org_ids: list[UUID]) -> None:
     for attempt in range(1, 6):
         try:
             async with AsyncSessionLocal() as session:
+                account_ids = [
+                    row
+                    for row in (
+                        await session.execute(select(Organization.account_id).where(Organization.id.in_(org_ids)))
+                    ).scalars()
+                    if row is not None
+                ]
                 rule_ids = [
                     row for row in (await session.execute(select(Rule.id).where(Rule.org_id.in_(org_ids)))).scalars()
                 ]
@@ -286,8 +296,19 @@ async def cleanup_orgs(org_ids: list[UUID]) -> None:
                 await session.execute(delete(Escalation).where(Escalation.org_id.in_(org_ids)))
                 await session.execute(delete(ApiKey).where(ApiKey.org_id.in_(org_ids)))
                 await session.execute(delete(DashboardOrgMembership).where(DashboardOrgMembership.org_id.in_(org_ids)))
+                if account_ids:
+                    await session.execute(
+                        delete(DashboardAccountMembership).where(DashboardAccountMembership.account_id.in_(account_ids))
+                    )
                 await session.execute(delete(PolicyCheckLog).where(PolicyCheckLog.org_id.in_(org_ids)))
                 await session.execute(delete(Organization).where(Organization.id.in_(org_ids)))
+                if account_ids:
+                    await session.execute(
+                        delete(Account).where(
+                            Account.id.in_(account_ids),
+                            ~select(Organization.id).where(Organization.account_id == Account.id).exists(),
+                        )
+                    )
                 await session.commit()
                 return
         except Exception as exc:
@@ -300,8 +321,16 @@ async def cleanup_orgs(org_ids: list[UUID]) -> None:
 async def create_test_org(run_id: str, name: str, *, billing_status: str = "active") -> TestOrg:
     api_key = _new_api_key()
     async with AsyncSessionLocal() as session:
+        account = Account(
+            name=f"[MASTER QA {run_id}] {name} account",
+            plan_tier="scale",
+            billing_status="active",
+        )
+        session.add(account)
+        await session.flush()
         org = Organization(
             name=f"[MASTER QA {run_id}] {name}",
+            account_id=account.id,
             slack_notifications_enabled=False,
             billing_status=billing_status,
         )
@@ -316,7 +345,7 @@ async def create_test_org(run_id: str, name: str, *, billing_status: str = "acti
         session.add(key)
         await session.flush()
         await session.commit()
-        return TestOrg(id=org.id, name=org.name, api_key=api_key, key_id=key.id)
+        return TestOrg(id=org.id, account_id=account.id, name=org.name, api_key=api_key, key_id=key.id)
 
 
 async def create_rule(
@@ -1325,12 +1354,20 @@ async def run_dashboard_tests(
     await rec.step("dashboard", "Supabase email/password session and org selection", login_and_select)
 
     async def pages_render() -> str:
-        for path in ("/dashboard", "/dashboard/review", "/dashboard/rules", "/dashboard/escalations", "/dashboard/settings"):
+        account_paths = ("/dashboard", "/dashboard/account")
+        for path in account_paths:
             response = await client.get(path)
             assert response.status_code == 200, f"{path} status={response.status_code}"
-            assert org.name in response.text or path == "/dashboard/settings", f"{path} missing org signal"
+            assert "Organizations" in response.text or "Account Settings" in response.text, f"{path} missing account dashboard"
             assert "Signal" in response.text, f"{path} missing Signal"
-        return "overview, review, rules, escalations, and settings render"
+
+        org_paths = ("/dashboard/overview", "/dashboard/review", "/dashboard/rules", "/dashboard/escalations", "/dashboard/settings")
+        for path in org_paths:
+            response = await client.get(path)
+            assert response.status_code == 200, f"{path} status={response.status_code}"
+            assert org.name in response.text, f"{path} missing org signal"
+            assert "Signal" in response.text, f"{path} missing Signal"
+        return "account, organizations, overview, review, rules, escalations, and organization settings render"
 
     await rec.step("dashboard", "authenticated dashboard pages render", pages_render)
 
@@ -1372,7 +1409,7 @@ async def run_dashboard_tests(
 
     await rec.step("dashboard", "settings API and API key management", settings_and_keys)
 
-    async def setup_paywall_key_flow() -> str:
+    async def setup_account_org_key_flow() -> str:
         setup = await client.post(
             "/admin/setup",
             json={"organization_name": f"[MASTER QA {run_id}] Dashboard-created org"},
@@ -1381,37 +1418,30 @@ async def run_dashboard_tests(
         setup.raise_for_status()
         new_org_id = UUID(setup.json()["organization"]["id"])
         created_org_ids.append(new_org_id)
-        blocked = await client.post(
-            "/admin/api-keys/generate",
-            json={"name": "Should be blocked"},
-            headers={"Content-Type": "application/json"},
-        )
-        assert blocked.status_code == 402, f"status={blocked.status_code}, body={blocked.text}"
-        async with AsyncSessionLocal() as session:
-            new_org = await session.get(Organization, new_org_id)
-            assert new_org is not None
-            new_org.billing_status = "active"
-            await session.commit()
         generated = await client.post(
             "/admin/api-keys/generate",
-            json={"name": "After subscription"},
+            json={"name": "New org key"},
             headers={"Content-Type": "application/json"},
         )
         generated.raise_for_status()
         assert generated.json()["api_key"].startswith("sk_live_"), generated.text
         select_back = await client.post(
             "/dashboard/org-session",
-            json={"api_key": org.api_key},
+            json={"org_id": str(org.id)},
             headers={"Content-Type": "application/json"},
         )
         select_back.raise_for_status()
-        return "first workspace setup enforces subscription before API key creation"
+        return "account-level organization creation and selected-org API key creation work"
 
-    await rec.step("dashboard", "first-time workspace setup and API-key paywall", setup_paywall_key_flow)
+    await rec.step("dashboard", "account-level organization setup and API-key limits", setup_account_org_key_flow)
 
     if with_stripe_checkout:
         async def checkout_url() -> str:
-            response = await client.post("/admin/billing/checkout")
+            response = await client.post(
+                "/admin/billing/checkout",
+                json={"tier": "pro"},
+                headers={"Content-Type": "application/json"},
+            )
             response.raise_for_status()
             url = response.json().get("url", "")
             assert url.startswith("https://"), url
@@ -1455,10 +1485,10 @@ async def run_billing_webhook_tests(
                     "object": {
                         "id": f"cs_master_{uuid4().hex}",
                         "object": "checkout.session",
-                        "client_reference_id": str(org.id),
+                        "client_reference_id": str(org.account_id),
                         "customer": "cus_master_qa",
                         "subscription": "sub_master_qa",
-                        "metadata": {"org_id": str(org.id)},
+                        "metadata": {"account_id": str(org.account_id), "plan_tier": "pro"},
                     }
                 },
             },
@@ -1471,11 +1501,12 @@ async def run_billing_webhook_tests(
         )
         response.raise_for_status()
         async with AsyncSessionLocal() as session:
-            db_org = await session.get(Organization, org.id)
-            assert db_org is not None
-            assert db_org.billing_status == "active", db_org.billing_status
-            assert db_org.stripe_customer_id == "cus_master_qa", db_org.stripe_customer_id
-        return "signed checkout.session.completed updated org billing"
+            db_account = await session.get(Account, org.account_id)
+            assert db_account is not None
+            assert db_account.billing_status == "active", db_account.billing_status
+            assert db_account.plan_tier == "pro", db_account.plan_tier
+            assert db_account.stripe_customer_id == "cus_master_qa", db_account.stripe_customer_id
+        return "signed checkout.session.completed updated account billing"
 
     await rec.step("billing", "Stripe webhook billing status update", webhook)
 

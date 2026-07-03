@@ -31,6 +31,8 @@ class Settings:
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
     stripe_price_id: str = ""
+    stripe_pro_price_id: str = ""
+    stripe_scale_price_id: str = ""
 
 
 def _load_dotenv_files() -> None:
@@ -80,6 +82,8 @@ def load_settings() -> Settings:
         stripe_secret_key=_env("STRIPE_SECRET_KEY"),
         stripe_webhook_secret=_env("STRIPE_WEBHOOK_SECRET"),
         stripe_price_id=_env("STRIPE_PRICE_ID"),
+        stripe_pro_price_id=_env("STRIPE_PRO_PRICE_ID"),
+        stripe_scale_price_id=_env("STRIPE_SCALE_PRICE_ID"),
     )
 
 

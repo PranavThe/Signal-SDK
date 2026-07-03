@@ -3,11 +3,16 @@
 {% block title %}Signal Escalations{% endblock %}
 
 {% block content %}
-<div x-data='escalationFilters({{ escalations|tojson }})' class="space-y-8">
-  <header>
-    <p class="text-sm font-medium text-stone-500">Escalations</p>
-    <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Escalation history</h1>
+<div x-data='escalationFilters({{ escalations|tojson }})' x-init="init()" class="space-y-8">
+  <header class="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+    <div>
+      <p class="text-sm font-medium text-stone-500">Escalations</p>
+      <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Escalation history</h1>
+    </div>
+    <p x-show="hasOrg" x-cloak class="text-sm text-stone-500">Live</p>
   </header>
+
+  <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
 
   <div class="space-y-3 border-y border-stone-200 py-4">
     <input
@@ -92,11 +97,14 @@
 <script>
   function escalationFilters(initialEscalations) {
     return {
-      escalations: initialEscalations,
+      hasOrg: {{ 'true' if current_org else 'false' }},
+      escalations: initialEscalations || [],
+      message: "",
       searchQuery: "",
       filterStatus: "",
       filterDecision: "",
       filterRuleCreated: "",
+      refreshInterval: null,
       get filteredEscalations() {
         let filtered = this.escalations;
 
@@ -136,7 +144,64 @@
         this.filterStatus = "";
         this.filterDecision = "";
         this.filterRuleCreated = "";
-      }
+      },
+      init() {
+        this.escalations = (initialEscalations || []).map((item) => this.normalizeEscalation(item));
+        if (!this.hasOrg) {
+          this.message = "Select an organization from Organizations to load escalations.";
+          return;
+        }
+        this.load(false);
+        this.refreshInterval = setInterval(() => this.load(false), 5000);
+        window.addEventListener("beforeunload", () => {
+          if (this.refreshInterval) clearInterval(this.refreshInterval);
+        });
+      },
+      async failureMessage(response, fallback) {
+        try {
+          const data = await response.json();
+          const detail = data?.detail;
+          if (typeof detail === "string") return detail;
+          if (detail?.message) return detail.message;
+        } catch {}
+        return fallback;
+      },
+      truncate(value, length) {
+        const text = String(value || "");
+        if (text.length <= length) return text;
+        return text.slice(0, length - 1).trimEnd() + "...";
+      },
+      timeAgo(value) {
+        if (!value) return "-";
+        const then = new Date(value).getTime();
+        if (Number.isNaN(then)) return "-";
+        const seconds = Math.max(Math.floor((Date.now() - then) / 1000), 0);
+        if (seconds < 60) return "just now";
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes}m ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours}h ago`;
+        return `${Math.floor(hours / 24)}d ago`;
+      },
+      normalizeEscalation(item) {
+        return {
+          ...item,
+          time: item.time || this.timeAgo(item.created_at),
+          context_short: item.context_short || this.truncate(item.context, 100),
+          human_decision: item.human_decision || "-",
+          rule_created: item.rule_created || (item.rule_id ? "Yes" : "No"),
+        };
+      },
+      async load(showErrors = true) {
+        if (!this.hasOrg) return;
+        const response = await fetch("/admin/escalations?limit=100", { credentials: "include" });
+        if (!response.ok) {
+          if (showErrors) this.message = await this.failureMessage(response, `Could not refresh escalations (${response.status}).`);
+          return;
+        }
+        const data = await response.json();
+        this.escalations = (data.items || []).map((item) => this.normalizeEscalation(item));
+      },
     };
   }
 </script>

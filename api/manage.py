@@ -15,7 +15,7 @@ from sqlalchemy import select
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from api.database import AsyncSessionLocal
-from api.models import ApiKey, Organization
+from api.models import Account, ApiKey, Organization
 
 
 KEY_PREFIX = "sk_live_"
@@ -38,11 +38,18 @@ def _hash_key(api_key: str) -> str:
 
 async def create_org(args: argparse.Namespace) -> None:
     async with AsyncSessionLocal() as session:
-        org = Organization(name=args.name, slack_channel_id=args.slack_channel_id)
+        account = Account(
+            name=f"{args.name} account",
+            plan_tier=args.plan_tier,
+            billing_status="active",
+        )
+        session.add(account)
+        await session.flush()
+        org = Organization(name=args.name, slack_channel_id=args.slack_channel_id, account_id=account.id)
         session.add(org)
         await session.flush()
         await session.commit()
-        print(f"Created org {_slugify(org.name)} (id: {org.id})")
+        print(f"Created org {_slugify(org.name)} (id: {org.id}, account_id: {account.id})")
 
 
 async def create_api_key(args: argparse.Namespace) -> None:
@@ -84,6 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
     create_org_parser = subparsers.add_parser("create-org", help="Create an organization")
     create_org_parser.add_argument("--name", required=True)
     create_org_parser.add_argument("--slack-channel-id")
+    create_org_parser.add_argument("--plan-tier", choices=["free", "pro", "scale", "enterprise"], default="free")
     create_org_parser.set_defaults(func=create_org)
 
     create_key_parser = subparsers.add_parser("create-api-key", help="Create an API key for an organization")

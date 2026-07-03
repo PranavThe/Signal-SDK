@@ -3,28 +3,33 @@
 {% block title %}Signal Overview{% endblock %}
 
 {% block content %}
-<div x-data="dashboardActions()" x-init="init()" class="space-y-10">
-<header>
-  <p class="text-sm font-medium text-stone-500">Overview</p>
-  <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Agent autonomy</h1>
+<div x-data='dashboardActions({{ overview|tojson }})' x-init="init()" class="space-y-10">
+<header class="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+  <div>
+    <p class="text-sm font-medium text-stone-500">Overview</p>
+    <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Agent autonomy</h1>
+  </div>
+  <p x-show="hasOrg" x-cloak class="text-sm text-stone-500">Live</p>
 </header>
 
-<section class="grid border-y border-stone-200 sm:grid-cols-2 sm:divide-x sm:divide-stone-200 xl:grid-cols-4">
-  <div class="py-5 sm:px-5 sm:first:pl-0">
+<p x-show="pageMessage" x-text="pageMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+
+<section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  <div class="border border-stone-200 p-5">
     <p class="text-sm text-stone-500">Total agent decisions today</p>
-    <p class="mt-3 text-3xl font-semibold tracking-tight">{{ stats.total_decisions_today }}</p>
+    <p class="mt-3 text-3xl font-semibold tracking-tight" x-text="stats.total_decisions_today"></p>
   </div>
-  <div class="border-t border-stone-200 py-5 sm:border-t-0 sm:px-5">
+  <div class="border border-stone-200 p-5">
     <p class="text-sm text-stone-500">Handled automatically</p>
-    <p class="mt-3 text-3xl font-semibold tracking-tight">{{ stats.auto_handled_today }}</p>
+    <p class="mt-3 text-3xl font-semibold tracking-tight" x-text="stats.auto_handled_today"></p>
   </div>
-  <div class="border-t border-stone-200 py-5 sm:px-5 xl:border-t-0">
+  <div class="border border-stone-200 p-5">
     <p class="text-sm text-stone-500">Escalations today</p>
-    <p class="mt-3 text-3xl font-semibold tracking-tight">{{ stats.escalations_today }}</p>
+    <p class="mt-3 text-3xl font-semibold tracking-tight" x-text="stats.escalations_today"></p>
   </div>
-  <div class="border-t border-stone-200 py-5 sm:px-5 xl:border-t-0">
+  <div class="border border-stone-200 p-5">
     <p class="text-sm text-stone-500">Autonomy score</p>
-    <p class="mt-3 text-3xl font-semibold tracking-tight">{{ stats.autonomy_score }}</p>
+    <p class="mt-3 text-3xl font-semibold tracking-tight" x-text="stats.autonomy_score"></p>
   </div>
 </section>
 
@@ -44,15 +49,18 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-stone-100">
-        {% for day in trend %}
-        <tr>
-          <td class="py-3 pr-5 font-medium">{{ day.date }}</td>
-          <td class="px-5 py-3 text-stone-600">{{ day.total_decisions }}</td>
-          <td class="px-5 py-3 text-stone-600">{{ day.auto_handled }}</td>
-          <td class="px-5 py-3 text-stone-600">{{ day.escalations }}</td>
-          <td class="py-3 pl-5 text-stone-950">{{ day.autonomy }}</td>
+        <template x-for="day in trend" :key="day.date">
+          <tr>
+            <td class="py-3 pr-5 font-medium" x-text="day.date"></td>
+            <td class="px-5 py-3 text-stone-600" x-text="day.total_decisions"></td>
+            <td class="px-5 py-3 text-stone-600" x-text="day.auto_handled"></td>
+            <td class="px-5 py-3 text-stone-600" x-text="day.escalations"></td>
+            <td class="py-3 pl-5 text-stone-950" x-text="day.autonomy"></td>
+          </tr>
+        </template>
+        <tr x-show="trend.length === 0" x-cloak>
+          <td colspan="5" class="py-8 text-center text-stone-500">No decisions yet.</td>
         </tr>
-        {% endfor %}
       </tbody>
     </table>
   </div>
@@ -64,23 +72,30 @@
       <h2 class="font-semibold">Suggestions</h2>
       <p class="mt-1 text-sm text-stone-500">Pending rule consolidation ideas.</p>
     </div>
+    <button @click="scanSuggestions()" :disabled="scanning || !hasOrg" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300 disabled:no-underline">
+      <span x-show="!scanning">Scan now</span>
+      <span x-show="scanning" x-cloak>Scanning...</span>
+    </button>
   </div>
-  <p x-show="message" x-text="message" class="mb-3 border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+  <p x-show="scanMessage" x-text="scanMessage" x-cloak class="mb-4 border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+  <p x-show="suggestionMessage" x-text="suggestionMessage" x-cloak class="mb-4 border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
   <div class="border-y border-stone-200 divide-y divide-stone-100">
-    {% for suggestion in suggestions %}
-    <div class="py-4">
-      <div class="grid gap-4 lg:grid-cols-[1fr_auto]">
-        <div>
-          <p class="text-sm font-medium text-stone-950">{{ suggestion.merged_condition }}</p>
-          <p class="mt-2 text-sm text-stone-600">{{ suggestion.merged_action }}</p>
-          <p class="mt-2 text-xs text-stone-500">{{ suggestion.reason }} · {{ suggestion.created }}</p>
+    <template x-for="suggestion in suggestions" :key="suggestion.id">
+      <div class="py-4">
+        <div class="grid gap-4 lg:grid-cols-[1fr_auto]">
+          <div>
+            <p class="text-sm font-medium text-stone-950" x-text="suggestion.merged_condition"></p>
+            <p class="mt-2 text-sm text-stone-600" x-text="suggestion.merged_action"></p>
+            <p class="mt-2 text-xs text-stone-500" x-text="`${suggestion.reason} · ${suggestion.created}`"></p>
+          </div>
+          <div class="flex items-start gap-4 lg:justify-end">
+            <button @click="acceptSuggestion(suggestion.id)" class="h-9 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Accept</button>
+            <button @click="dismissSuggestion(suggestion.id)" class="h-9 text-sm font-semibold text-stone-500 underline-offset-4 hover:text-stone-950 hover:underline">Decline</button>
+          </div>
         </div>
-        <button @click="acceptSuggestion('{{ suggestion.id }}')" class="h-9 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Accept</button>
       </div>
-    </div>
-    {% else %}
-    <p class="py-8 text-sm text-stone-500">No pending suggestions.</p>
-    {% endfor %}
+    </template>
+    <p x-show="suggestions.length === 0" x-cloak class="py-8 text-sm text-stone-500">No pending suggestions.</p>
   </div>
 </section>
 
@@ -91,17 +106,16 @@
       <a href="/dashboard/rules" class="text-sm font-medium text-stone-600 hover:text-stone-950">View all</a>
     </div>
     <div class="border-y border-stone-200 divide-y divide-stone-100">
-      {% for rule in active_rules %}
-      <a href="/dashboard/rules/{{ rule.id }}" class="block py-4">
-        <div class="flex items-start justify-between gap-4">
-          <p class="text-sm font-medium text-stone-950">{{ rule.condition }}</p>
-          <span class="shrink-0 text-xs font-semibold uppercase text-emerald-700">{{ rule.action }}</span>
-        </div>
-        <p class="mt-2 text-sm text-stone-500">{{ rule.trigger_count }} triggers · last {{ rule.last_triggered }}</p>
-      </a>
-      {% else %}
-      <p class="py-8 text-sm text-stone-500">No active rules yet.</p>
-      {% endfor %}
+      <template x-for="rule in activeRules" :key="rule.id">
+        <a :href="`/dashboard/rules/${rule.id}`" class="block py-4">
+          <div class="flex items-start justify-between gap-4">
+            <p class="text-sm font-medium text-stone-950" x-text="rule.condition"></p>
+            <span class="shrink-0 text-xs font-semibold uppercase text-emerald-700" x-text="rule.action"></span>
+          </div>
+          <p class="mt-2 text-sm text-stone-500" x-text="`${rule.trigger_count} triggers · last ${rule.last_triggered}`"></p>
+        </a>
+      </template>
+      <p x-show="activeRules.length === 0" x-cloak class="py-8 text-sm text-stone-500">No active rules yet.</p>
     </div>
   </div>
 
@@ -111,35 +125,101 @@
       <a href="/dashboard/escalations" class="text-sm font-medium text-stone-600 hover:text-stone-950">View all</a>
     </div>
     <div class="border-y border-stone-200 divide-y divide-stone-100">
-      {% for escalation in recent_escalations %}
-      <div class="py-4">
-        <div class="flex items-start justify-between gap-4">
-          <p class="text-sm font-medium text-stone-950">{{ escalation.context }}</p>
-          <span class="shrink-0 text-xs font-semibold uppercase text-stone-500">{{ escalation.status }}</span>
+      <template x-for="escalation in recentEscalations" :key="escalation.id">
+        <div class="py-4">
+          <div class="flex items-start justify-between gap-4">
+            <p class="text-sm font-medium text-stone-950" x-text="escalation.context"></p>
+            <span class="shrink-0 text-xs font-semibold uppercase text-stone-500" x-text="escalation.status"></span>
+          </div>
+          <p class="mt-2 text-sm text-stone-500" x-text="`${escalation.human_decision} · ${escalation.time_ago}`"></p>
         </div>
-        <p class="mt-2 text-sm text-stone-500">{{ escalation.human_decision }} · {{ escalation.time_ago }}</p>
-      </div>
-      {% else %}
-      <p class="py-8 text-sm text-stone-500">No escalations yet.</p>
-      {% endfor %}
+      </template>
+      <p x-show="recentEscalations.length === 0" x-cloak class="py-8 text-sm text-stone-500">No escalations yet.</p>
     </div>
   </div>
 </section>
 </div>
 
 <script>
-  function dashboardActions() {
+  function dashboardActions(initialOverview) {
     return {
       hasOrg: {{ 'true' if current_org else 'false' }},
-      message: "",
+      overview: initialOverview || {},
+      pageMessage: "",
+      scanMessage: "",
+      suggestionMessage: "",
+      scanning: false,
+      refreshInterval: null,
+      get stats() {
+        return this.overview.stats || {
+          total_decisions_today: 0,
+          auto_handled_today: 0,
+          escalations_today: 0,
+          autonomy_score: "0.0%",
+        };
+      },
+      get trend() {
+        return this.overview.trend || [];
+      },
+      get suggestions() {
+        return this.overview.suggestions || [];
+      },
+      get activeRules() {
+        return this.overview.active_rules || [];
+      },
+      get recentEscalations() {
+        return this.overview.recent_escalations || [];
+      },
       init() {
         if (!this.hasOrg) {
-          this.message = "Select an organization in Settings to use dashboard features.";
+          this.pageMessage = "Select an organization from Organizations to load dashboard data.";
+          return;
         }
+        this.load(false);
+        this.refreshInterval = setInterval(() => this.load(false), 5000);
+        window.addEventListener("beforeunload", () => {
+          if (this.refreshInterval) clearInterval(this.refreshInterval);
+        });
+      },
+      async failureMessage(response, fallback) {
+        try {
+          const data = await response.json();
+          const detail = data?.detail;
+          if (typeof detail === "string") return detail;
+          if (detail?.message) return detail.message;
+        } catch {}
+        return fallback;
+      },
+      async load(showErrors = true) {
+        if (!this.hasOrg) return;
+        const response = await fetch("/admin/overview", { credentials: "include" });
+        if (!response.ok) {
+          if (showErrors) this.pageMessage = await this.failureMessage(response, `Could not refresh dashboard (${response.status}).`);
+          return;
+        }
+        this.overview = await response.json();
+      },
+      async scanSuggestions() {
+        if (!this.hasOrg || this.scanning) return;
+        this.scanning = true;
+        this.scanMessage = "Scanning active rules for consolidation opportunities...";
+        this.suggestionMessage = "";
+        const response = await fetch("/admin/consolidation/run", {
+          method: "POST",
+          credentials: "include",
+        });
+        this.scanning = false;
+        if (!response.ok) {
+          this.scanMessage = await this.failureMessage(response, `Scan failed (${response.status}).`);
+          return;
+        }
+        const result = await response.json();
+        await this.load(false);
+        this.scanMessage = `Scan complete. Checked ${result.pairs_checked || 0} pairs and created ${result.suggestions_created || 0} suggestion${(result.suggestions_created || 0) === 1 ? "" : "s"}.`;
       },
       async acceptSuggestion(suggestionId) {
         if (!this.hasOrg) {
-          this.message = "Please go to Settings to select an organization.";
+          this.suggestionMessage = "Select an organization before accepting suggestions.";
           return;
         }
         const response = await fetch(`/admin/consolidation/${suggestionId}/accept`, {
@@ -147,10 +227,27 @@
           credentials: "include",
         });
         if (!response.ok) {
-          this.message = `Accept failed (${response.status}).`;
+          this.suggestionMessage = await this.failureMessage(response, `Accept failed (${response.status}).`);
           return;
         }
-        this.message = "Suggestion accepted. Refresh to see the merged rule.";
+        await this.load(false);
+        this.suggestionMessage = "Suggestion accepted. The original rules were archived and the merged rule is active.";
+      },
+      async dismissSuggestion(suggestionId) {
+        if (!this.hasOrg) {
+          this.suggestionMessage = "Select an organization before declining suggestions.";
+          return;
+        }
+        const response = await fetch(`/admin/consolidation/${suggestionId}/decline`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!response.ok) {
+          this.suggestionMessage = await this.failureMessage(response, `Decline failed (${response.status}).`);
+          return;
+        }
+        await this.load(false);
+        this.suggestionMessage = "Suggestion declined.";
       },
     };
   }

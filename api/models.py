@@ -14,6 +14,64 @@ class Base(DeclarativeBase):
     pass
 
 
+class Account(Base):
+    __tablename__ = "accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    owner_user_id: Mapped[str | None] = mapped_column(Text)
+    owner_email: Mapped[str | None] = mapped_column(Text)
+    plan_tier: Mapped[str] = mapped_column(Text, nullable=False, default="free", server_default="free")
+    billing_status: Mapped[str] = mapped_column(Text, nullable=False, default="active", server_default="active")
+    stripe_customer_id: Mapped[str | None] = mapped_column(Text)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(Text)
+    billing_current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    organizations: Mapped[list["Organization"]] = relationship("Organization", back_populates="account")
+    dashboard_memberships: Mapped[list["DashboardAccountMembership"]] = relationship(
+        "DashboardAccountMembership",
+        back_populates="account",
+    )
+
+
+class DashboardAccountMembership(Base):
+    __tablename__ = "dashboard_account_memberships"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False, default="owner", server_default="owner")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    account: Mapped[Account] = relationship("Account", back_populates="dashboard_memberships")
+
+
 class Organization(Base):
     __tablename__ = "organizations"
 
@@ -24,6 +82,7 @@ class Organization(Base):
         server_default=text("gen_random_uuid()"),
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    account_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("accounts.id"))
     slack_channel_id: Mapped[str | None] = mapped_column(Text)
     slack_notifications_enabled: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
     webhook_url: Mapped[str | None] = mapped_column(Text)
@@ -39,6 +98,7 @@ class Organization(Base):
     )
 
     api_keys: Mapped[list["ApiKey"]] = relationship("ApiKey", back_populates="organization")
+    account: Mapped[Account | None] = relationship("Account", back_populates="organizations")
     dashboard_memberships: Mapped[list["DashboardOrgMembership"]] = relationship(
         "DashboardOrgMembership",
         back_populates="organization",

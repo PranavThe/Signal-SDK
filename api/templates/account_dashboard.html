@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Signal Organizations{% endblock %}
+
+{% block content %}
+<div x-data='accountOrganizations({{ account_data|tojson }})' x-init="init()" class="space-y-10">
+  <header class="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+    <div>
+      <p class="text-sm font-medium text-stone-500">Account</p>
+      <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Organizations</h1>
+    </div>
+    <p class="text-sm text-stone-500" x-text="selectedOrgName() || 'Nothing selected'"></p>
+  </header>
+
+  <section class="space-y-4">
+    <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+      <div>
+        <h2 class="font-semibold">Your organizations</h2>
+        <p class="mt-1 text-sm text-stone-500">Choose an organization to open its dashboard.</p>
+      </div>
+      <button @click="createOpen = !createOpen" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline" x-text="createOpen ? 'Cancel' : 'Create organization'"></button>
+    </div>
+    <p x-show="orgMessage" x-text="orgMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+
+    <div x-show="createOpen" x-cloak class="border-y border-stone-200 py-5">
+      <div class="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+        <div>
+          <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="new-org-name">Organization name</label>
+          <input id="new-org-name" x-model="newOrgName" :disabled="!canCreateOrganization()" placeholder="Acme Corp" class="mt-2 h-11 w-full border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950 disabled:text-stone-400" />
+        </div>
+        <button @click="createOrganization()" :disabled="!canCreateOrganization()" class="h-11 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300 disabled:no-underline">Create</button>
+      </div>
+      <p x-show="!canCreateOrganization()" x-cloak class="mt-3 text-sm text-stone-500">Your current plan includes <span x-text="keyLimitLabel(data.plan.org_limit)"></span> organization<span x-show="data.plan.org_limit !== 1">s</span>. Upgrade in Account Settings to add more.</p>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <template x-for="org in data.organizations" :key="org.id">
+        <div>
+          <button @click="openOrganization(org)" class="flex aspect-square min-h-52 w-full flex-col justify-between border border-stone-200 p-5 text-left transition hover:border-stone-950 hover:bg-stone-50">
+            <p class="max-h-24 overflow-hidden text-lg font-semibold leading-snug text-stone-950" x-text="org.name"></p>
+            <div class="flex items-end justify-between gap-3 text-sm">
+              <span class="text-stone-500" x-text="formatDate(org.created_at)"></span>
+              <span class="font-semibold text-stone-950">Open</span>
+            </div>
+          </button>
+          <div class="mt-2 min-h-8">
+            <button x-show="confirmDeleteOrgId !== org.id" @click="confirmDeleteOrgId = org.id" class="text-sm font-semibold text-stone-400 underline-offset-4 hover:text-stone-950 hover:underline">Delete</button>
+            <div x-show="confirmDeleteOrgId === org.id" x-cloak class="flex flex-wrap items-center gap-3 text-sm">
+              <span class="text-stone-500">Delete this organization?</span>
+              <button @click="deleteOrganization(org)" :disabled="deletingOrgId === org.id" class="font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300">
+                <span x-show="deletingOrgId !== org.id">Delete</span>
+                <span x-show="deletingOrgId === org.id" x-cloak>Deleting...</span>
+              </button>
+              <button @click="confirmDeleteOrgId = ''" :disabled="deletingOrgId === org.id" class="font-semibold text-stone-400 underline-offset-4 hover:text-stone-950 hover:underline disabled:text-stone-300">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </template>
+      <div x-show="data.organizations.length === 0" x-cloak class="border-y border-stone-200 py-10 text-sm text-stone-500">
+        No organizations yet. Create one to start using Signal.
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  function accountOrganizations(initialData) {
+    return {
+      data: initialData,
+      orgMessage: "",
+      newOrgName: "",
+      createOpen: false,
+      confirmDeleteOrgId: "",
+      deletingOrgId: "",
+      refreshInterval: null,
+      init() {
+        this.refreshInterval = setInterval(() => this.load(true), 7000);
+        window.addEventListener("beforeunload", () => {
+          if (this.refreshInterval) clearInterval(this.refreshInterval);
+        });
+      },
+      async failureMessage(response, fallback) {
+        try {
+          const data = await response.json();
+          if (typeof data?.detail === "string") return data.detail;
+          if (data?.detail?.message) return data.detail.message;
+        } catch {}
+        return fallback;
+      },
+      async load(silent = false) {
+        const response = await fetch("/admin/settings", { credentials: "include" });
+        if (!response.ok) {
+          if (!silent) this.orgMessage = await this.failureMessage(response, `Could not load organizations (${response.status}).`);
+          return;
+        }
+        this.data = await response.json();
+      },
+      organizationUsage() {
+        const limit = this.keyLimitLabel(this.data.plan.org_limit);
+        return `${this.data.plan.organizations_used || 0} / ${limit}`;
+      },
+      keyLimitLabel(value) {
+        return value >= 10000 ? "Custom" : value;
+      },
+      canCreateOrganization() {
+        return Boolean(this.data?.plan?.can_create_organization);
+      },
+      selectedOrgName() {
+        const selected = (this.data?.organizations || []).find((org) => org.selected);
+        return selected?.name || "";
+      },
+      async openOrganization(org) {
+        const selected = await window.signalSelectOrg(org.id, { by: "org_id", reload: false });
+        if (!selected) {
+          this.orgMessage = "Could not open that organization.";
+          return;
+        }
+        window.location.href = "/dashboard/overview";
+      },
+      async createOrganization() {
+        const organizationName = this.newOrgName.trim();
+        if (!organizationName) {
+          this.orgMessage = "Enter an organization name first.";
+          return;
+        }
+        const response = await fetch("/admin/setup", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ organization_name: organizationName }),
+        });
+        if (!response.ok) {
+          this.orgMessage = await this.failureMessage(response, `Could not create organization (${response.status}).`);
+          return;
+        }
+        const result = await response.json();
+        this.newOrgName = "";
+        this.createOpen = false;
+        this.data = result.settings;
+        window.signalRememberOrg(result.organization || this.data.organization);
+        window.location.href = "/dashboard/overview";
+      },
+      async deleteOrganization(org) {
+        this.deletingOrgId = org.id;
+        const response = await fetch(`/admin/organizations/${org.id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        this.deletingOrgId = "";
+        if (!response.ok) {
+          this.orgMessage = await this.failureMessage(response, `Could not delete organization (${response.status}).`);
+          return;
+        }
+        const result = await response.json();
+        this.data = result.settings;
+        this.confirmDeleteOrgId = "";
+        sessionStorage.removeItem("signal_org_name");
+        this.orgMessage = result.message || "Organization deleted.";
+      },
+      formatDate(dateStr) {
+        if (!dateStr) return "recently";
+        const date = new Date(dateStr);
+        if (Number.isNaN(date.getTime())) return "recently";
+        return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+      },
+    };
+  }
+</script>
+{% endblock %}

@@ -3,10 +3,13 @@
 {% block title %}Signal Rules{% endblock %}
 
 {% block content %}
-<div x-data='ruleActions({{ rules|tojson }})' class="space-y-8">
-  <header>
-    <p class="text-sm font-medium text-stone-500">Rules</p>
-    <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Rules library</h1>
+<div x-data='ruleActions({{ rules|tojson }})' x-init="init()" class="space-y-8">
+  <header class="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+    <div>
+      <p class="text-sm font-medium text-stone-500">Rules</p>
+      <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Rules library</h1>
+    </div>
+    <p x-show="hasOrg" x-cloak class="text-sm text-stone-500">Live</p>
   </header>
 
   <div class="space-y-3 border-y border-stone-200 py-4">
@@ -38,15 +41,18 @@
     <p class="text-sm text-stone-600">
       <span x-text="selectedCount"></span> selected
     </p>
-    <button
-      @click="deleteSelected()"
-      class="h-9 text-sm font-semibold text-red-700 underline-offset-4 hover:underline"
-    >
-      Delete selected
-    </button>
+    <div class="flex flex-col gap-2 sm:items-end">
+      <button
+        @click="deleteSelected()"
+        class="h-9 text-sm font-semibold text-red-700 underline-offset-4 hover:underline"
+      >
+        Delete selected
+      </button>
+      <p x-show="bulkMessage" x-text="bulkMessage" x-cloak class="text-sm text-stone-600"></p>
+    </div>
   </div>
 
-  <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+  <p x-show="pageMessage" x-text="pageMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
 
   <section>
     <div x-show="selectedCount > 0" x-cloak class="mb-4 flex items-center gap-2 border-y border-stone-200 py-3">
@@ -54,11 +60,11 @@
       <label class="text-sm text-stone-600">Select all</label>
     </div>
 
-    <div class="space-y-3">
+    <div class="divide-y divide-stone-200 border-y border-stone-200">
       <template x-for="rule in filteredRules" :key="rule.id">
-        <div class="border border-stone-200 bg-white">
+        <div>
           <!-- Header with checkbox and status -->
-          <div class="flex items-start gap-4 border-b border-stone-200 bg-stone-50 p-4">
+          <div class="flex items-start gap-4 py-4">
             <input type="checkbox" :checked="isSelected(rule.id)" @change="toggleSelected(rule.id, $event.target.checked)" class="mt-0.5 h-4 w-4 accent-stone-950" />
             <div class="flex min-w-0 flex-1 items-start justify-between gap-4">
               <div class="min-w-0 flex-1">
@@ -82,9 +88,10 @@
               </div>
             </div>
           </div>
+          <p x-show="ruleMessage(rule.id)" x-text="ruleMessage(rule.id)" x-cloak class="pb-3 pl-8 text-sm text-stone-600"></p>
 
           <!-- Rule content -->
-          <a :href="`/dashboard/rules/${rule.id}`" class="block p-5">
+          <a :href="`/dashboard/rules/${rule.id}`" class="block pb-5 pl-8">
             <div class="grid gap-4 lg:grid-cols-[1fr_auto_1fr]">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">When</p>
@@ -100,6 +107,10 @@
                 <p class="mt-2 text-sm leading-relaxed text-stone-700" x-text="rule.action"></p>
               </div>
             </div>
+            <div class="mt-4" x-show="rule.exceptions_note">
+              <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Exceptions</p>
+              <p class="mt-2 text-sm leading-relaxed text-stone-600" x-text="rule.exceptions_note"></p>
+            </div>
 
             <!-- Metadata footer -->
             <div class="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-stone-100 pt-3 text-xs text-stone-500">
@@ -110,10 +121,10 @@
         </div>
       </template>
 
-      <div x-show="filteredRules.length === 0 && rules.length === 0" x-cloak class="border border-stone-200 bg-stone-50 py-12 text-center">
+      <div x-show="filteredRules.length === 0 && rules.length === 0" x-cloak class="border-y border-stone-200 py-12 text-center">
         <p class="text-sm text-stone-500">No rules yet.</p>
       </div>
-      <div x-show="filteredRules.length === 0 && rules.length > 0" x-cloak class="border border-stone-200 bg-stone-50 py-12 text-center">
+      <div x-show="filteredRules.length === 0 && rules.length > 0" x-cloak class="border-y border-stone-200 py-12 text-center">
         <p class="text-sm text-stone-500">No rules match your search criteria.</p>
       </div>
     </div>
@@ -124,12 +135,15 @@
   function ruleActions(initialRules) {
     return {
       hasOrg: {{ 'true' if current_org else 'false' }},
-      message: "",
-      rules: initialRules,
+      pageMessage: "",
+      bulkMessage: "",
+      ruleMessages: {},
+      rules: initialRules || [],
       selected: [],
       searchQuery: "",
       filterStatus: "",
       filterConfidence: "",
+      refreshInterval: null,
       get filteredRules() {
         let filtered = this.rules;
 
@@ -137,8 +151,8 @@
         if (this.searchQuery.trim()) {
           const query = this.searchQuery.toLowerCase();
           filtered = filtered.filter(rule =>
-            rule.condition.toLowerCase().includes(query) ||
-            rule.action.toLowerCase().includes(query)
+            (rule.condition || "").toLowerCase().includes(query) ||
+            (rule.action || "").toLowerCase().includes(query)
           );
         }
 
@@ -149,7 +163,7 @@
 
         // Confidence filter
         if (this.filterConfidence) {
-          filtered = filtered.filter(rule => rule.confidence.toLowerCase() === this.filterConfidence.toLowerCase());
+          filtered = filtered.filter(rule => this.confidenceBucket(rule.confidence) === this.filterConfidence);
         }
 
         return filtered;
@@ -158,7 +172,19 @@
         return this.selected.length;
       },
       get allSelected() {
-        return this.filteredRules.length > 0 && this.selected.length === this.filteredRules.length;
+        return this.filteredRules.length > 0 && this.filteredRules.every((rule) => this.selected.includes(rule.id));
+      },
+      init() {
+        this.rules = (initialRules || []).map((rule) => this.normalizeRule(rule));
+        if (!this.hasOrg) {
+          this.pageMessage = "Select an organization from Organizations to load rules.";
+          return;
+        }
+        this.load(false);
+        this.refreshInterval = setInterval(() => this.load(false), 5000);
+        window.addEventListener("beforeunload", () => {
+          if (this.refreshInterval) clearInterval(this.refreshInterval);
+        });
       },
       clearFilters() {
         this.searchQuery = "";
@@ -172,8 +198,53 @@
       },
       requireOrg() {
         if (this.hasOrg) return true;
-        this.message = "Select an organization in Settings first.";
+        this.pageMessage = "Select an organization from Organizations first.";
         return false;
+      },
+      confidenceBucket(confidence) {
+        const value = Number.parseInt(String(confidence || "0").replace("%", ""), 10);
+        if (value >= 80) return "high";
+        if (value >= 50) return "medium";
+        return "low";
+      },
+      normalizeRule(rule) {
+        const confidence = rule.confidence || `${Math.round((rule.extraction_confidence || 0) * 100)}%`;
+        return {
+          ...rule,
+          condition: rule.condition || rule.condition_description || "",
+          action: rule.action || rule.action_description || "",
+          confidence,
+          trigger_count: rule.trigger_count || 0,
+          last_triggered: rule.last_triggered || this.timeAgo(rule.last_triggered_at),
+          created: rule.created || this.timeAgo(rule.created_at),
+        };
+      },
+      timeAgo(value) {
+        if (!value) return "-";
+        const then = new Date(value).getTime();
+        if (Number.isNaN(then)) return "-";
+        const seconds = Math.max(Math.floor((Date.now() - then) / 1000), 0);
+        if (seconds < 60) return "just now";
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes}m ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours}h ago`;
+        return `${Math.floor(hours / 24)}d ago`;
+      },
+      async load(showErrors = true) {
+        if (!this.hasOrg) return;
+        const response = await fetch("/admin/rules?limit=100", {
+          credentials: "include",
+          headers: this.headers(),
+        });
+        if (!response.ok) {
+          if (showErrors) this.pageMessage = await this.failureMessage(response, `Could not refresh rules (${response.status}).`);
+          return;
+        }
+        const data = await response.json();
+        this.rules = (data.items || []).map((rule) => this.normalizeRule(rule));
+        const visibleIds = new Set(this.rules.map((rule) => rule.id));
+        this.selected = this.selected.filter((id) => visibleIds.has(id));
       },
       statusClass(status) {
         if (status === "active") return "text-emerald-700";
@@ -182,6 +253,12 @@
       },
       canToggle(rule) {
         return rule.status === "active" || rule.status === "paused";
+      },
+      ruleMessage(ruleId) {
+        return this.ruleMessages[ruleId] || "";
+      },
+      setRuleMessage(ruleId, value) {
+        this.ruleMessages = { ...this.ruleMessages, [ruleId]: value };
       },
       isSelected(ruleId) {
         return this.selected.includes(ruleId);
@@ -230,10 +307,11 @@
         });
         if (!response.ok) {
           rule.status = previous;
-          this.message = await this.failureMessage(response, `Update failed (${response.status}).`);
+          this.setRuleMessage(rule.id, await this.failureMessage(response, `Update failed (${response.status}).`));
           return;
         }
-        this.message = status === "active" ? "Rule activated." : "Rule paused.";
+        await this.load(false);
+        this.setRuleMessage(rule.id, status === "active" ? "Rule activated." : "Rule paused.");
       },
       async toggleActive(rule) {
         if (!this.canToggle(rule)) return;
@@ -253,14 +331,17 @@
           body: JSON.stringify({ rule_ids: ruleIds }),
         });
         if (!response.ok) {
-          this.message = await this.failureMessage(response, `Delete failed (${response.status}).`);
+          const errorMessage = await this.failureMessage(response, `Delete failed (${response.status}).`);
+          if (ruleIds.length === 1) this.setRuleMessage(ruleIds[0], errorMessage);
+          else this.bulkMessage = errorMessage;
           return;
         }
         const data = await response.json();
         const deleted = data.deleted || ruleIds;
         this.rules = this.rules.filter((rule) => !deleted.includes(rule.id));
         this.selected = this.selected.filter((id) => !deleted.includes(id));
-        this.message = deleted.length === 1 ? "Rule deleted." : `${deleted.length} rules deleted.`;
+        await this.load(false);
+        this.bulkMessage = deleted.length === 1 ? "Rule deleted." : `${deleted.length} rules deleted.`;
       },
     };
   }
