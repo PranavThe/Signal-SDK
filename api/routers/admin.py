@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import secrets
 import string
 from datetime import UTC, datetime, timedelta
@@ -59,6 +60,7 @@ from api.services.billing_service import (
 from api.services.conflict_service import ConflictService, ConflictWarning
 from api.services.escalation_pipeline import slack_delivery_available
 from api.services.lifecycle_service import run_consolidation
+from api.services.redis_service import get_cached_metrics, set_cached_metrics
 from api.services.review_service import (
     approve_rule,
     create_rule_from_escalation,
@@ -71,10 +73,13 @@ from api.services.review_service import (
 )
 from api.services.resolution_propagator import propagate_rule
 from api.services.semantic_service import find_similar_escalations
+from api.background_tasks import safe_background_task
 
 
 router = APIRouter(tags=["admin"])
 templates = Jinja2Templates(directory="api/templates")
+logger = logging.getLogger(__name__)
+
 
 
 class DashboardDecisionRequest(BaseModel):
@@ -667,6 +672,11 @@ async def _overview_data(session: AsyncSession, org_id: UUID | None) -> dict[str
     if org_id is None:
         return await _empty_overview_data()
 
+    # Check cache first
+    cached = await get_cached_metrics(str(org_id))
+    if cached is not None:
+        return cached
+
     today_start = _today_start_utc()
     trend_start = today_start - timedelta(days=6)
 
@@ -802,10 +812,26 @@ async def _overview_data(session: AsyncSession, org_id: UUID | None) -> dict[str
             .limit(5)
         )
     ).scalars().all()
+
+    # Batch fetch rules to avoid N+1 queries
+    rule_ids = []
+    for suggestion in suggestions:
+        if suggestion.rule_a_id:
+            rule_ids.append(suggestion.rule_a_id)
+        if suggestion.rule_b_id:
+            rule_ids.append(suggestion.rule_b_id)
+
+    rules_by_id = {}
+    if rule_ids:
+        rules = (
+            await session.execute(select(Rule).where(Rule.id.in_(rule_ids)))
+        ).scalars().all()
+        rules_by_id = {rule.id: rule for rule in rules}
+
     suggestion_items = []
     for suggestion in suggestions:
-        rule_a = await session.get(Rule, suggestion.rule_a_id)
-        rule_b = await session.get(Rule, suggestion.rule_b_id)
+        rule_a = rules_by_id.get(suggestion.rule_a_id)
+        rule_b = rules_by_id.get(suggestion.rule_b_id)
         suggestion_items.append(
             {
                 "id": str(suggestion.id),
@@ -818,7 +844,7 @@ async def _overview_data(session: AsyncSession, org_id: UUID | None) -> dict[str
             }
         )
 
-    return {
+    result = {
         "stats": {
             "total_decisions_today": total_decisions_today,
             "auto_handled_today": total_auto_handled_today,
@@ -848,6 +874,11 @@ async def _overview_data(session: AsyncSession, org_id: UUID | None) -> dict[str
         ],
         "suggestions": suggestion_items,
     }
+
+    # Cache the result for 30 seconds
+    await set_cached_metrics(str(org_id), result, ttl_seconds=30)
+
+    return result
 
 
 @router.get("/login")
@@ -1109,11 +1140,20 @@ async def dashboard_escalations(
                 select(Escalation)
                 .where(Escalation.org_id == current_org.org_id)
                 .order_by(Escalation.created_at.desc())
+                .limit(100)  # Limit to prevent OOM on orgs with many escalations
             )
         ).scalars().all()
+
+    # Batch fetch rules to avoid N+1 queries
+    rule_ids = [e.rule_id for e in escalations if e.rule_id]
+    rules_by_id = {}
+    if rule_ids:
+        rules = (await session.execute(select(Rule).where(Rule.id.in_(rule_ids)))).scalars().all()
+        rules_by_id = {rule.id: rule for rule in rules}
+
     items = []
     for escalation in escalations:
-        rule = await session.get(Rule, escalation.rule_id) if escalation.rule_id else None
+        rule = rules_by_id.get(escalation.rule_id) if escalation.rule_id else None
         items.append(_dashboard_escalation_payload(escalation, rule))
 
     return templates.TemplateResponse(
@@ -1350,8 +1390,8 @@ async def dashboard_approve_rule(
     if escalation is not None:
         await publish_final_escalation_result(escalation)
     await publish_rule_created(rule)
-    asyncio.create_task(propagate_rule(rule.id, rule.org_id))
-    asyncio.create_task(run_consolidation(org_id=auth.org_id, max_pairs_per_org=50))
+    safe_background_task(propagate_rule(rule.id, rule.org_id), "propagate_rule")
+    safe_background_task(run_consolidation(org_id=auth.org_id, max_pairs_per_org=50), "run_consolidation")
     return {
         "rule": await _review_rule_payload(session, rule),
         "item": await _review_escalation_payload(session, escalation) if escalation else None,
@@ -1624,9 +1664,11 @@ async def get_rules(
     auth: AuthContext = Depends(require_dashboard_org_auth),
     dashboard_user: DashboardUser = Depends(require_dashboard_user),
     limit: int = 50,
+    offset: int = 0,
 ) -> dict[str, Any]:
     _ = dashboard_user
     safe_limit = min(max(limit, 1), 100)
+    safe_offset = max(offset, 0)
     rules = (
         await session.execute(
             select(Rule)
@@ -1643,6 +1685,7 @@ async def get_rules(
                 Rule.updated_at.desc(),
             )
             .limit(safe_limit)
+            .offset(safe_offset)
         )
     ).scalars().all()
     return {"items": [_dashboard_rule_payload(rule) for rule in rules]}
@@ -1688,7 +1731,7 @@ async def update_dashboard_rule_status(
     rule.updated_at = datetime.now(UTC)
     await session.commit()
     if request.status == "active":
-        asyncio.create_task(run_consolidation(org_id=auth.org_id, max_pairs_per_org=50))
+        safe_background_task(run_consolidation(org_id=auth.org_id, max_pairs_per_org=50), "run_consolidation")
     return {"rule_id": str(rule.id), "status": rule.status}
 
 
@@ -1710,20 +1753,31 @@ async def get_escalations(
     auth: AuthContext = Depends(require_dashboard_org_auth),
     dashboard_user: DashboardUser = Depends(require_dashboard_user),
     limit: int = 50,
+    offset: int = 0,
 ) -> dict[str, Any]:
     _ = dashboard_user
     safe_limit = min(max(limit, 1), 100)
+    safe_offset = max(offset, 0)
     escalations = (
         await session.execute(
             select(Escalation)
             .where(Escalation.org_id == auth.org_id)
             .order_by(Escalation.created_at.desc())
             .limit(safe_limit)
+            .offset(safe_offset)
         )
     ).scalars().all()
+
+    # Batch fetch rules to avoid N+1 queries
+    rule_ids = [e.rule_id for e in escalations if e.rule_id]
+    rules_by_id = {}
+    if rule_ids:
+        rules = (await session.execute(select(Rule).where(Rule.id.in_(rule_ids)))).scalars().all()
+        rules_by_id = {rule.id: rule for rule in rules}
+
     items = []
     for escalation in escalations:
-        rule = await session.get(Rule, escalation.rule_id) if escalation.rule_id else None
+        rule = rules_by_id.get(escalation.rule_id) if escalation.rule_id else None
         items.append(_dashboard_escalation_payload(escalation, rule))
     return {"items": items}
 
@@ -1734,15 +1788,18 @@ async def get_check_logs(
     auth: AuthContext = Depends(require_dashboard_org_auth),
     dashboard_user: DashboardUser = Depends(require_dashboard_user),
     limit: int = 50,
+    offset: int = 0,
 ) -> dict[str, Any]:
     _ = dashboard_user
     safe_limit = min(max(limit, 1), 100)
+    safe_offset = max(offset, 0)
     logs = (
         await session.execute(
             select(PolicyCheckLog)
             .where(PolicyCheckLog.org_id == auth.org_id)
             .order_by(PolicyCheckLog.created_at.desc())
             .limit(safe_limit)
+            .offset(safe_offset)
         )
     ).scalars().all()
     return {"items": [_check_log_payload(log) for log in logs]}

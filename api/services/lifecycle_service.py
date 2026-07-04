@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -295,18 +296,29 @@ async def run_consolidation(
                     )
                     seen_pairs.add(key)
 
-            for row in rows:
+            # Process consolidation pairs concurrently with semaphore to limit concurrency
+            semaphore = asyncio.Semaphore(5)  # Limit to 5 concurrent API calls
+
+            async def process_pair(row: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+                async with semaphore:
+                    try:
+                        result = await _ask_can_merge(client, row)
+                        return row, result
+                    except Exception:
+                        logger.exception(
+                            "Could not evaluate consolidation pair %s/%s",
+                            row["rule_a_id"],
+                            row["rule_b_id"],
+                        )
+                        return row, None
+
+            # Run all API calls concurrently
+            results = await asyncio.gather(*[process_pair(row) for row in rows])
+
+            # Process results
+            for row, result in results:
                 stats["pairs_checked"] += 1
-                try:
-                    result = await _ask_can_merge(client, row)
-                except Exception:
-                    logger.exception(
-                        "Could not evaluate consolidation pair %s/%s",
-                        row["rule_a_id"],
-                        row["rule_b_id"],
-                    )
-                    continue
-                if not result.get("can_merge"):
+                if result is None or not result.get("can_merge"):
                     continue
 
                 session.add(

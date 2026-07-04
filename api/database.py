@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from api.config import settings
@@ -13,8 +12,10 @@ database_url, connect_args = normalize_database_url(settings.database_url)
 engine = create_async_engine(
     database_url,
     connect_args=connect_args,
-    poolclass=pool.NullPool,
+    pool_size=5,
+    max_overflow=10,
     pool_pre_ping=True,
+    pool_recycle=300,  # Recycle connections after 5 minutes
 )
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,

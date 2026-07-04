@@ -210,6 +210,26 @@ async def approve_rule(
             )
         return False, warnings, escalation
 
+    # Re-check for conflicts immediately before activation with locking
+    # to prevent race condition where another rule might have been activated
+    conflict_service = ConflictService()
+    final_warnings = await conflict_service.detect_conflicts(session, rule, rule.condition_embedding)
+    if final_warnings:
+        rule.status = "pending_approval"
+        rule.updated_at = datetime.now(UTC)
+        if escalation is not None and await _slack_sync_enabled(session, escalation):
+            await _try_slack(
+                SlackService().update_rule_proposal(
+                    escalation,
+                    rule,
+                    "blocked by conflict",
+                    conflict_warnings=final_warnings,
+                    include_buttons=True,
+                ),
+                "update conflicted rule proposal",
+            )
+        return False, final_warnings, escalation
+
     rule.status = "active"
     rule.updated_at = datetime.now(UTC)
     if escalation is not None:

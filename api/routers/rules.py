@@ -9,6 +9,7 @@ from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import AuthContext, require_api_key
+from api.background_tasks import safe_background_task
 from api.database import get_session
 from api.models import ConsolidationSuggestion, Escalation, PolicyCheckLog, Rule, RuleConflict
 from api.schemas import RuleDeleteRequest, RuleStatusUpdate
@@ -106,7 +107,7 @@ async def update_rule_status(
     rule.updated_at = datetime.now(UTC)
     await session.commit()
     if request.status == "active":
-        asyncio.create_task(run_consolidation(org_id=auth.org_id, max_pairs_per_org=50))
+        safe_background_task(run_consolidation(org_id=auth.org_id, max_pairs_per_org=50), "run_consolidation")
 
     return {"rule_id": str(rule.id), "status": rule.status}
 

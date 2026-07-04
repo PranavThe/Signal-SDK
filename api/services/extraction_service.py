@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from anthropic import AsyncAnthropic
+import httpx
 
 from api.config import settings
 from api.models import Escalation, Rule
@@ -159,7 +160,10 @@ def _block_input(block: Any) -> dict[str, Any] | None:
 
 class ExtractionService:
     def __init__(self) -> None:
-        self.client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        self.client = AsyncAnthropic(
+            api_key=settings.anthropic_api_key,
+            timeout=httpx.Timeout(60.0, connect=10.0),
+        )
 
     async def extract_rule(self, escalation: Escalation) -> ExtractedRule:
         user_prompt = f"""An AI agent escalated this situation and a human made a decision.

@@ -98,3 +98,45 @@ async def subscribe_escalation_events(escalation_id: str) -> AsyncGenerator[dict
     finally:
         await pubsub.unsubscribe(channel)
         await pubsub.aclose()
+
+
+async def get_cached_metrics(org_id: str) -> dict[str, Any] | None:
+    """Retrieve cached dashboard metrics for an organization.
+
+    Args:
+        org_id: The organization ID
+
+    Returns:
+        Cached metrics dict or None if not cached or error
+    """
+    try:
+        cached = await _client_for_redis().get(f"metrics:overview:{org_id}")
+        if cached:
+            return json.loads(cached)
+        return None
+    except Exception:
+        logger.exception("Could not retrieve cached metrics for org %s", org_id)
+        return None
+
+
+async def set_cached_metrics(org_id: str, data: dict[str, Any], ttl_seconds: int = 30) -> bool:
+    """Cache dashboard metrics for an organization.
+
+    Args:
+        org_id: The organization ID
+        data: The metrics data to cache
+        ttl_seconds: Time-to-live in seconds (default: 30)
+
+    Returns:
+        True if successfully cached, False otherwise
+    """
+    try:
+        await _client_for_redis().set(
+            f"metrics:overview:{org_id}",
+            json.dumps(data, default=_json_default),
+            ex=ttl_seconds,
+        )
+        return True
+    except Exception:
+        logger.exception("Could not cache metrics for org %s", org_id)
+        return False

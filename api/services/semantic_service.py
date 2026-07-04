@@ -52,7 +52,8 @@ def _meaningful_tokens(text_value: str) -> set[str]:
 def _has_enough_overlap(query_text: str, rule_text: str, similarity: float) -> bool:
     if similarity >= SEMANTIC_RULE_STRONG_MATCH_THRESHOLD:
         return True
-    return len(_meaningful_tokens(query_text) & _meaningful_tokens(rule_text)) >= 2
+    # Require at least 3 overlapping meaningful tokens to prevent false matches
+    return len(_meaningful_tokens(query_text) & _meaningful_tokens(rule_text)) >= 3
 
 
 def semantic_candidate_is_plausible(

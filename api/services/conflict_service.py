@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from anthropic import AsyncAnthropic
+import httpx
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -198,7 +199,10 @@ def _rules_can_overlap(rule_a: Rule, rule_b: Rule) -> bool:
 
 class ConflictService:
     def __init__(self) -> None:
-        self.client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        self.client = AsyncAnthropic(
+            api_key=settings.anthropic_api_key,
+            timeout=httpx.Timeout(60.0, connect=10.0),
+        )
 
     async def detect_conflicts(
         self,

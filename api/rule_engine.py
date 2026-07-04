@@ -9,6 +9,11 @@ from api.models import Rule
 
 def evaluate_condition(field: str, operator: str, expected: Any, context: dict[str, Any]) -> bool:
     actual = context.get(field)
+
+    # Check exists operator first before None check
+    if operator == "exists":
+        return (actual is not None) == expected
+
     if actual is None:
         return False
 
@@ -31,8 +36,6 @@ def evaluate_condition(field: str, operator: str, expected: Any, context: dict[s
             return actual not in expected
         if operator == "contains":
             return expected in actual
-        if operator == "exists":
-            return (actual is not None) == expected
     except TypeError:
         return False
 

@@ -4,7 +4,7 @@ import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import AuthContext, require_api_key
@@ -86,8 +86,16 @@ async def check_policy(
         else:
             reasoning = f"Matched rule: {matched_rule.action_description}"
         modification = action.get("parameters") if result == "modify" else None
-        matched_rule.trigger_count += 1
-        matched_rule.last_triggered_at = datetime.now(UTC)
+
+        # Atomic update to prevent race condition on trigger_count
+        await session.execute(
+            update(Rule)
+            .where(Rule.id == matched_rule.id)
+            .values(
+                trigger_count=Rule.trigger_count + 1,
+                last_triggered_at=datetime.now(UTC),
+            )
+        )
 
     check_log = PolicyCheckLog(
         agent_id=payload.agent_id,

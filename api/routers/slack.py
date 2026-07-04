@@ -15,6 +15,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.background_tasks import safe_background_task
 from api.config import settings
 from api.database import AsyncSessionLocal
 from api.models import Escalation, Rule
@@ -283,8 +284,8 @@ async def process_slack_action(action_id: str, value: str) -> None:
                 await session.commit()
                 if escalation is not None:
                     await _publish_final_escalation_result(escalation)
-                asyncio.create_task(propagate_rule(rule.id, rule.org_id))
-                asyncio.create_task(run_consolidation(org_id=rule.org_id, max_pairs_per_org=50))
+                safe_background_task(propagate_rule(rule.id, rule.org_id), "propagate_rule")
+                safe_background_task(run_consolidation(org_id=rule.org_id, max_pairs_per_org=50), "run_consolidation")
                 await send_webhook_event_by_org_id(
                     rule.org_id,
                     "rule.created",

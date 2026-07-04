@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from sse_starlette.sse import EventSourceResponse
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import AuthContext, require_api_key
@@ -98,9 +98,12 @@ async def create_escalation(
             )
         ).scalar_one_or_none()
         if recent_check and recent_check.rule_id:
-            overridden_rule = await session.get(Rule, recent_check.rule_id)
-            if overridden_rule and overridden_rule.org_id == auth.org_id:
-                overridden_rule.override_count += 1
+            # Atomic update to prevent race condition on override_count
+            await session.execute(
+                update(Rule)
+                .where(Rule.id == recent_check.rule_id, Rule.org_id == auth.org_id)
+                .values(override_count=Rule.override_count + 1)
+            )
 
     await session.commit()
 
