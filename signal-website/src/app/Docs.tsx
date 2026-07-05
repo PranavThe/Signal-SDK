@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { Github, Check, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { motion, useInView } from "motion/react";
 
 function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
@@ -105,9 +105,6 @@ export default function Docs() {
         <div style={{ display: "flex", gap: isMobile ? "0.875rem" : "1.5rem", alignItems: "center" }}>
           <Link to="/" style={{ fontSize: "0.875rem", fontWeight: 500, color: "#0d0d0b", textDecoration: "none" }}>Home</Link>
           <a href={DASHBOARD_URL} target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.875rem", fontWeight: 500, color: "#0d0d0b", textDecoration: "none" }}>Dashboard</a>
-          <a href="https://github.com/PranavThe/Signal-SDK" target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: isMobile ? "1.75rem" : "2.25rem", height: isMobile ? "1.75rem" : "2.25rem", color: "#0d0d0b" }}>
-            <Github size={20} strokeWidth={1.5} />
-          </a>
         </div>
       </nav>
 
@@ -115,7 +112,14 @@ export default function Docs() {
         <div style={{ maxWidth: "1400px", margin: "0 auto", padding: isMobile ? "0 1rem" : "0 2rem", display: isNarrow ? "block" : "grid", gridTemplateColumns: "240px 1fr", gap: "4rem" }}>
 
           {/* Sidebar */}
-          <aside style={{ position: isNarrow ? "relative" : "sticky", top: isNarrow ? "auto" : "7rem", alignSelf: "start", marginBottom: isNarrow ? "2.5rem" : 0 }}>
+          <aside style={{
+            position: isNarrow ? "relative" : "sticky",
+            top: isNarrow ? "auto" : "7rem",
+            alignSelf: "start",
+            marginBottom: isNarrow ? "2.5rem" : 0,
+            maxHeight: isNarrow ? "auto" : "calc(100vh - 8rem)",
+            overflowY: "auto"
+          }}>
             <p style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#6a6a67", marginBottom: "1rem", fontFamily: "'Geist Mono', monospace", fontWeight: 600 }}>
               Contents
             </p>
