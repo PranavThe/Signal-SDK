@@ -109,49 +109,83 @@ export default function Docs() {
       </nav>
 
       <div style={{ paddingTop: isMobile ? "6rem" : "8rem", paddingBottom: "4rem" }}>
-        <div style={{ maxWidth: "1400px", margin: "0 auto", padding: isMobile ? "0 1rem" : "0 2rem", display: isNarrow ? "block" : "grid", gridTemplateColumns: "240px 1fr", gap: "4rem" }}>
+        <div style={{ maxWidth: "1400px", margin: "0 auto", padding: isMobile ? "0 1rem" : "0 2rem", position: "relative" }}>
+          <div style={{ display: isNarrow ? "block" : "flex", gap: "4rem" }}>
 
           {/* Sidebar */}
-          <aside style={{
-            position: isNarrow ? "relative" : "sticky",
-            top: isNarrow ? "auto" : "7rem",
-            alignSelf: "start",
-            marginBottom: isNarrow ? "2.5rem" : 0,
-            maxHeight: isNarrow ? "auto" : "calc(100vh - 8rem)",
-            overflowY: "auto"
-          }}>
-            <p style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#6a6a67", marginBottom: "1rem", fontFamily: "'Geist Mono', monospace", fontWeight: 600 }}>
-              Contents
-            </p>
-            <nav style={{ display: "flex", flexDirection: isNarrow ? "row" : "column", flexWrap: "wrap", gap: isNarrow ? "0.625rem 1rem" : "0.5rem" }}>
-              {navItems.map((item) => {
-                const isActive = activeSection === item.id;
-                return (
-                  <a
-                    key={item.id}
-                    href={"#" + item.id}
-                    style={{
-                      fontSize: "0.875rem",
-                      color: isActive ? "#0d0d0b" : "#6a6a67",
-                      textDecoration: "none",
-                      paddingLeft: isNarrow ? 0 : "0.75rem",
-                      paddingTop: "0.25rem",
-                      paddingBottom: "0.25rem",
-                      borderLeft: isNarrow ? "none" : isActive ? "2px solid #0d0d0b" : "2px solid transparent",
-                      borderBottom: isNarrow && isActive ? "1px solid #0d0d0b" : "1px solid transparent",
-                      fontWeight: isActive ? 600 : 400,
-                      transition: "all 0.2s ease"
-                    }}
-                  >
-                    {item.label}
-                  </a>
-                );
-              })}
-            </nav>
-          </aside>
+          {!isNarrow && (
+            <aside style={{
+              position: "fixed",
+              top: "7rem",
+              width: "240px",
+              maxHeight: "calc(100vh - 8rem)",
+              overflowY: "auto",
+              paddingRight: "1rem"
+            }}>
+              <p style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#6a6a67", marginBottom: "1rem", fontFamily: "'Geist Mono', monospace", fontWeight: 600 }}>
+                Contents
+              </p>
+              <nav style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {navItems.map((item) => {
+                  const isActive = activeSection === item.id;
+                  return (
+                    <a
+                      key={item.id}
+                      href={"#" + item.id}
+                      style={{
+                        fontSize: "0.875rem",
+                        color: isActive ? "#0d0d0b" : "#6a6a67",
+                        textDecoration: "none",
+                        paddingLeft: "0.75rem",
+                        paddingTop: "0.25rem",
+                        paddingBottom: "0.25rem",
+                        borderLeft: isActive ? "2px solid #0d0d0b" : "2px solid transparent",
+                        fontWeight: isActive ? 600 : 400,
+                        transition: "all 0.2s ease"
+                      }}
+                    >
+                      {item.label}
+                    </a>
+                  );
+                })}
+              </nav>
+            </aside>
+          )}
+
+          {/* Mobile sidebar */}
+          {isNarrow && (
+            <aside style={{ marginBottom: "2.5rem" }}>
+              <p style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#6a6a67", marginBottom: "1rem", fontFamily: "'Geist Mono', monospace", fontWeight: 600 }}>
+                Contents
+              </p>
+              <nav style={{ display: "flex", flexDirection: "row", flexWrap: "wrap", gap: "0.625rem 1rem" }}>
+                {navItems.map((item) => {
+                  const isActive = activeSection === item.id;
+                  return (
+                    <a
+                      key={item.id}
+                      href={"#" + item.id}
+                      style={{
+                        fontSize: "0.875rem",
+                        color: isActive ? "#0d0d0b" : "#6a6a67",
+                        textDecoration: "none",
+                        paddingTop: "0.25rem",
+                        paddingBottom: "0.25rem",
+                        borderBottom: isActive ? "1px solid #0d0d0b" : "1px solid transparent",
+                        fontWeight: isActive ? 600 : 400,
+                        transition: "all 0.2s ease"
+                      }}
+                    >
+                      {item.label}
+                    </a>
+                  );
+                })}
+              </nav>
+            </aside>
+          )}
 
           {/* Main Content */}
-          <article style={{ maxWidth: isNarrow ? "100%" : "56rem" }}>
+          <article style={{ maxWidth: isNarrow ? "100%" : "56rem", marginLeft: isNarrow ? 0 : "calc(240px + 4rem)" }}>
             {/* Header */}
             <Reveal>
               <div style={{ marginBottom: "4rem" }}>
