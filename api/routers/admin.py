@@ -1433,10 +1433,12 @@ async def dashboard_discard_rule(
     escalation = await discard_rule(session, rule)
     await session.commit()
     if escalation is not None:
+        await session.refresh(escalation)
         await publish_final_escalation_result(escalation)
-    return {
-        "item": await _review_escalation_payload(session, escalation) if escalation else None,
-    }
+        return {
+            "item": await _review_escalation_payload(session, escalation),
+        }
+    return {"item": None}
 
 
 @router.get("/admin/settings")
