@@ -16,6 +16,5 @@ build/
 node_modules/
 sdk-ts/node_modules/
 sdk-ts/dist/
-signal-website/
 signal-website/node_modules/
 signal-website/dist/
