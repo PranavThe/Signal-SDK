@@ -12,13 +12,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 from fastapi.responses import PlainTextResponse
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.background_tasks import safe_background_task
 from api.config import settings
 from api.database import AsyncSessionLocal
-from api.models import Escalation, Rule
+from api.models import ConsolidationSuggestion, Escalation, Rule, RuleConflict
 from api.services.conflict_service import ConflictService
 from api.services.embedding_service import embed, save_rule_embedding
 from api.services.extraction_service import ExtractionService
@@ -315,6 +315,25 @@ async def process_slack_action(action_id: str, value: str) -> None:
                     escalation.rule_id = None
                     _mark_escalation_finalized(escalation, "rule_discarded")
                     await slack.update_rule_proposal(escalation, rule, "discarded")
+
+                # Clean up all references before deleting the rule
+                await session.execute(
+                    delete(RuleConflict).where(
+                        or_(
+                            RuleConflict.rule_a_id == rule.id,
+                            RuleConflict.rule_b_id == rule.id,
+                        )
+                    )
+                )
+                await session.execute(
+                    delete(ConsolidationSuggestion).where(
+                        or_(
+                            ConsolidationSuggestion.rule_a_id == rule.id,
+                            ConsolidationSuggestion.rule_b_id == rule.id,
+                        )
+                    )
+                )
+
                 await session.delete(rule)
                 await session.commit()
                 if escalation is not None:

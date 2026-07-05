@@ -4,9 +4,10 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.models import Escalation, Organization, Rule
+from api.models import ConsolidationSuggestion, Escalation, Organization, Rule, RuleConflict
 from api.services.conflict_service import ConflictService, ConflictWarning
 from api.services.embedding_service import embed, save_rule_embedding
 from api.services.escalation_pipeline import slack_delivery_available
@@ -285,6 +286,25 @@ async def discard_rule(
         mark_escalation_finalized(escalation, "rule_discarded")
         if await _slack_sync_enabled(session, escalation):
             await _try_slack(SlackService().update_rule_proposal(escalation, rule, "discarded"), "discard rule proposal")
+
+    # Clean up all references before deleting the rule
+    await session.execute(
+        delete(RuleConflict).where(
+            or_(
+                RuleConflict.rule_a_id == rule.id,
+                RuleConflict.rule_b_id == rule.id,
+            )
+        )
+    )
+    await session.execute(
+        delete(ConsolidationSuggestion).where(
+            or_(
+                ConsolidationSuggestion.rule_a_id == rule.id,
+                ConsolidationSuggestion.rule_b_id == rule.id,
+            )
+        )
+    )
+
     await session.flush()
     await session.delete(rule)
     return escalation
