@@ -1083,8 +1083,7 @@ export default function Docs() {
       <div style={{ paddingTop: isMobile ? "6rem" : "8rem", paddingBottom: "4rem" }}>
         <div style={{ maxWidth: "1400px", margin: "0 auto", padding: isMobile ? "0 1rem" : "0 2rem", position: "relative" }}>
           <div style={{ display: isNarrow ? "block" : "flex", gap: "4rem" }}>
-
-          {/* Desktop Sidebar */}
+            {/* Desktop Sidebar */}
           {!isNarrow && (
             <aside style={{
               position: "fixed",
@@ -1124,8 +1123,8 @@ export default function Docs() {
             </aside>
           )}
 
-          {/* Mobile sidebar */}
-          {isNarrow && (
+            {/* Mobile sidebar */}
+            {isNarrow && (
             <aside style={{ marginBottom: "2.5rem" }}>
               <p style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#6a6a67", marginBottom: "1rem", fontFamily: "'Geist Mono', monospace", fontWeight: 600 }}>
                 Contents
@@ -1154,10 +1153,10 @@ export default function Docs() {
                 })}
               </nav>
             </aside>
-          )}
+            )}
 
-          {/* Main Content */}
-          <article style={{ maxWidth: isNarrow ? "100%" : "56rem", marginLeft: isNarrow ? 0 : "calc(240px + 4rem)" }}>
+            {/* Main Content */}
+            <article style={{ maxWidth: isNarrow ? "100%" : "56rem", marginLeft: isNarrow ? 0 : "calc(240px + 4rem)" }}>
             {/* Header */}
             <Reveal>
               <div style={{ marginBottom: "4rem" }}>
@@ -1589,10 +1588,10 @@ Customer Tier: premium"""`}</pre>
                 </button>
               </div>
             </Reveal>
-          </article>
+            </article>
+          </div>
         </div>
       </div>
-    </div>
     </div>
   );
 }
