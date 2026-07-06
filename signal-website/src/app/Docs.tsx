@@ -1471,54 +1471,6 @@ export default function Docs() {
 
             <SectionDivider />
 
-            <section id="best-practices" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
-              <Reveal>
-                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Best Practices</h2>
-
-                <div style={{ marginBottom: "3rem" }}>
-                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Writing Good Context</h3>
-                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
-                    The quality of your escalations depends on the context you provide. Good context should:
-                  </p>
-                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
-                    <li>Include all relevant information needed to make the decision</li>
-                    <li>Be structured consistently (use the same format each time)</li>
-                    <li>Include quantitative data (amounts, counts, percentages)</li>
-                    <li>Mention any relevant history or patterns</li>
-                    <li>Avoid including sensitive information like passwords or tokens</li>
-                  </ul>
-                </div>
-
-                <div style={{ marginBottom: "3rem" }}>
-                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Agent IDs</h3>
-                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
-                    <li>Use descriptive agent_id names (e.g., "customer-support-refunds" not "agent1")</li>
-                    <li>Keep agent_id consistent for the same type of decisions</li>
-                    <li>Use hyphens to separate words (not underscores or spaces)</li>
-                    <li>Organize by department-function-subdomain if helpful</li>
-                  </ul>
-                </div>
-
-                <div style={{ marginBottom: "3rem" }}>
-                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Error Handling</h3>
-                  <CodeBlock language="python" code={'import signalops\nfrom signalops.exceptions import SignalTimeout, SignalError\n\ntry:\n    result = await signalops.escalate(\n        agent_id="my-agent",\n        question="Should I proceed?",\n        context="Important decision context",\n        timeout_seconds=300\n    )\nexcept SignalTimeout:\n    # Handle timeout - decision took too long\n    result = default_safe_action()\nexcept SignalError as e:\n    # Handle other Signal errors\n    logger.error(f"Signal error: {e}")\n    result = fallback_decision()'} />
-                </div>
-
-                <div>
-                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Testing</h3>
-                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
-                    <li>Use different API keys for development, staging, and production</li>
-                    <li>Test with real-looking data to ensure rules work correctly</li>
-                    <li>Review proposed rules carefully before approving them</li>
-                    <li>Start with small rollouts before applying rules broadly</li>
-                    <li>Monitor auto-resolution rates in the dashboard</li>
-                  </ul>
-                </div>
-              </Reveal>
-            </section>
-
-            <SectionDivider />
-
             <section id="errors" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
               <Reveal>
                 <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Error Handling</h2>
@@ -1588,6 +1540,54 @@ export default function Docs() {
                     <li>Ensure you're using the same agent_id as when the rule was created</li>
                     <li>Review rule exceptions - they may be excluding your case</li>
                     <li>Check if context format is consistent with previous escalations</li>
+                  </ul>
+                </div>
+              </Reveal>
+            </section>
+
+            <SectionDivider />
+
+            <section id="best-practices" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Best Practices</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Writing Good Context</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    The quality of your escalations depends on the context you provide. Good context should:
+                  </p>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Include all relevant information needed to make the decision</li>
+                    <li>Be structured consistently (use the same format each time)</li>
+                    <li>Include quantitative data (amounts, counts, percentages)</li>
+                    <li>Mention any relevant history or patterns</li>
+                    <li>Avoid including sensitive information like passwords or tokens</li>
+                  </ul>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Agent IDs</h3>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Use descriptive agent_id names (e.g., "customer-support-refunds" not "agent1")</li>
+                    <li>Keep agent_id consistent for the same type of decisions</li>
+                    <li>Use hyphens to separate words (not underscores or spaces)</li>
+                    <li>Organize by department-function-subdomain if helpful</li>
+                  </ul>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Error Handling</h3>
+                  <CodeBlock language="python" code={'import signalops\nfrom signalops.exceptions import SignalTimeout, SignalError\n\ntry:\n    result = await signalops.escalate(\n        agent_id="my-agent",\n        question="Should I proceed?",\n        context="Important decision context",\n        timeout_seconds=300\n    )\nexcept SignalTimeout:\n    # Handle timeout - decision took too long\n    result = default_safe_action()\nexcept SignalError as e:\n    # Handle other Signal errors\n    logger.error(f"Signal error: {e}")\n    result = fallback_decision()'} />
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Testing</h3>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Use different API keys for development, staging, and production</li>
+                    <li>Test with real-looking data to ensure rules work correctly</li>
+                    <li>Review proposed rules carefully before approving them</li>
+                    <li>Start with small rollouts before applying rules broadly</li>
+                    <li>Monitor auto-resolution rates in the dashboard</li>
                   </ul>
                 </div>
               </Reveal>
