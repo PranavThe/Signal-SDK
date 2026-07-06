@@ -280,16 +280,54 @@ Install the SDK in editable mode:
 pip install -e ./sdk
 ```
 
-Example:
+### Understanding the `context` Parameter
+
+The `context` parameter is **always a string** in the API. There are two recommended formats:
+
+#### Simple String (for basic cases)
+```python
+context="Customer Jane Smith is requesting a refund on order #1234. Order is 47 days old."
+```
+
+#### Structured JSON String (recommended for rule matching)
+```python
+import json
+
+# ✅ CORRECT - Convert dict to JSON string
+context_data = {
+    "customer": {
+        "name": "Jane Smith",
+        "tier": "gold"
+    },
+    "order": {
+        "id": "#1234",
+        "age_days": 47,
+        "value": 189.00
+    }
+}
+context = json.dumps(context_data)
+
+# ❌ WRONG - Passing dict directly will cause validation error
+# context = context_data  # This will fail!
+```
+
+**Why use structured JSON?**
+- Rules can match specific fields (e.g., `customer.tier == "gold"`)
+- More precise than parsing free text
+- Easier to debug when rules don't match
+
+### Python SDK Example
 
 ```python
 import asyncio
+import json
 from signal_sdk import Signal
 
 
 async def main():
     signal = Signal(api_key="sk_live_...", base_url="http://localhost:8000")
 
+    # Example 1: Simple string context
     result = await signal.escalate(
         context="Customer Jane Smith is requesting a refund on order #1234. Order is 47 days old.",
         question="Should I approve or reject this refund?",
@@ -302,14 +340,31 @@ async def main():
     )
     print(f"Decision: {result.decision}")
 
-    check = await signal.check(
-        action="send_refund",
-        agent_id="support-agent",
-        context={
-            "customer_tier": "gold",
-            "order_age_days": 47,
-            "order_value": 189.00,
+    # Example 2: Structured JSON context (recommended)
+    context_data = {
+        "deployment_id": "deploy-007",
+        "change_type": "hotfix",
+        "author": {
+            "email": "alice@company.com",
+            "experience": "senior"
         },
+        "files_changed": 3,
+        "test_coverage": 95.0
+    }
+
+    result = await signal.escalate(
+        context=json.dumps(context_data),  # Convert to JSON string
+        question="Should this deployment be approved?",
+        agent_id="deploy-agent",
+        metadata={"risk_level": "low"},
+    )
+    print(f"Decision: {result.decision}")
+
+    # Check against saved rules
+    check = await signal.check(
+        action="approve_deployment",
+        agent_id="deploy-agent",
+        context=context_data,  # SDK handles JSON conversion
     )
     print(f"Result: {check.result} - {check.reasoning}")
 
@@ -329,7 +384,7 @@ npm install
 npm run build
 ```
 
-Example:
+### TypeScript SDK Example
 
 ```typescript
 import { Signal } from "@signal-sdk/node";
@@ -339,17 +394,42 @@ const signal = new Signal({
   baseUrl: "http://localhost:8000",
 });
 
-const result = await signal.escalate({
+// Example 1: Simple string context
+const result1 = await signal.escalate({
   context: "Customer Jane Smith is requesting a refund on order #1234.",
   question: "Should I approve or reject this refund?",
   agentId: "support-agent",
   metadata: { customerTier: "gold", orderValue: 189.0 },
 });
 
+// Example 2: Structured JSON context (recommended)
+const contextData = {
+  deployment_id: "deploy-007",
+  change_type: "hotfix",
+  author: {
+    email: "alice@company.com",
+    experience: "senior"
+  },
+  files_changed: 3,
+  test_coverage: 95.0
+};
+
+// ✅ CORRECT - Convert object to JSON string
+const result2 = await signal.escalate({
+  context: JSON.stringify(contextData),
+  question: "Should this deployment be approved?",
+  agentId: "deploy-agent",
+  metadata: { riskLevel: "low" },
+});
+
+// ❌ WRONG - Passing object directly
+// context: contextData  // This will cause a validation error!
+
+// Check against saved rules
 const check = await signal.check({
-  action: "send_refund",
-  agentId: "support-agent",
-  context: { customerTier: "gold", orderValue: 189.0 },
+  action: "approve_deployment",
+  agentId: "deploy-agent",
+  context: contextData,  // SDK handles conversion
 });
 ```
 
