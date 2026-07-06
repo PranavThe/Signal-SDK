@@ -1227,33 +1227,7 @@ export default function Docs() {
                 <div>
                   <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Step 3: Write Your First Agent</h3>
                   <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Here's a complete working example:</p>
-                  <CodeBlock language="python" code={`import asyncio
-import signalops
-
-# Configure Signal
-signalops.configure(api_key="sk_live_your_api_key_here")
-
-async def handle_refund_request(customer_id, amount, reason):
-    # Ask Signal for a decision
-    result = await signalops.escalate(
-        agent_id="customer-support-refunds",
-        question="Should I issue a refund?",
-        context=f"""Customer ID: {customer_id}
-Order Amount: $${amount}
-Reason: {reason}
-Customer Tier: premium"""
-    )
-
-    # Act on the decision
-    if result.decision == "approve":
-        print(f"✓ Refund approved")
-        return True
-    else:
-        print(f"✗ Refund denied")
-        return False
-
-# Run it
-asyncio.run(handle_refund_request("cust_123", 150, "damaged"))`} />
+                  <CodeBlock language="python" code={'import asyncio\nimport signalops\n\n# Configure Signal\nsignalops.configure(api_key="sk_live_your_api_key_here")\n\nasync def handle_refund_request(customer_id, amount, reason):\n    # Ask Signal for a decision\n    result = await signalops.escalate(\n        agent_id="customer-support-refunds",\n        question="Should I issue a refund?",\n        context=f"""Customer ID: {customer_id}\nOrder Amount: ${amount}\nReason: {reason}\nCustomer Tier: premium"""\n    )\n\n    # Act on the decision\n    if result.decision == "approve":\n        print(f"✓ Refund approved")\n        return True\n    else:\n        print(f"✗ Refund denied")\n        return False\n\n# Run it\nasyncio.run(handle_refund_request("cust_123", 150, "damaged"))'} />
                 </div>
               </Reveal>
             </section>
@@ -1267,25 +1241,13 @@ asyncio.run(handle_refund_request("cust_123", 150, "damaged"))`} />
                 <div style={{ marginBottom: "3rem" }}>
                   <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.configure()</h3>
                   <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Configure Signal globally. Call this once at the start of your application.</p>
-                  <CodeBlock language="python" code={`signalops.configure(
-    api_key="sk_live_your_api_key_here",
-    base_url="https://signal-omega-tan.vercel.app"  # Optional
-)`} />
+                  <CodeBlock language="python" code={'signalops.configure(\n    api_key="sk_live_your_api_key_here",\n    base_url="https://signal-omega-tan.vercel.app"  # Optional\n)'} />
                 </div>
 
                 <div>
                   <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.escalate()</h3>
                   <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Escalate a decision to Signal. Returns a decision from an existing rule, or waits for human review.</p>
-                  <CodeBlock language="python" code={`result = await signalops.escalate(
-    agent_id="customer-support-refunds",
-    question="Should I issue a refund?",
-    context="Customer ID: cust_123\\nAmount: $$150",
-    action="refund_request",  # optional
-    metadata={"customer_id": "cust_123"},  # optional
-    timeout_seconds=600  # optional, default 3600
-)
-
-# Returns: decision (str), rule_id (str | None), auto_resolved (bool)`} />
+                  <CodeBlock language="python" code={'result = await signalops.escalate(\n    agent_id="customer-support-refunds",\n    question="Should I issue a refund?",\n    context="Customer ID: cust_123\\nAmount: $150",\n    action="refund_request",  # optional\n    metadata={"customer_id": "cust_123"},  # optional\n    timeout_seconds=600  # optional, default 3600\n)\n\n# Returns: decision (str), rule_id (str | None), auto_resolved (bool)'} />
                 </div>
               </Reveal>
             </section>
