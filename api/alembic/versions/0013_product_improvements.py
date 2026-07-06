@@ -24,7 +24,7 @@ def upgrade() -> None:
             "tags",
             postgresql.ARRAY(sa.Text()),
             nullable=False,
-            server_default="ARRAY[]::TEXT[]",
+            server_default=sa.text("'{}'"),
         ),
     )
 
@@ -65,12 +65,10 @@ def upgrade() -> None:
     op.create_index("idx_rule_versions_rule_id", "rule_versions", ["rule_id"])
     op.create_index("idx_rule_versions_rule_version", "rule_versions", ["rule_id", "version_number"])
     op.create_index("idx_escalations_tags", "escalations", ["tags"], postgresql_using="gin")
-    op.create_index("idx_escalations_org_tags", "escalations", ["org_id", "tags"], postgresql_using="gin")
 
 
 def downgrade() -> None:
     # Drop indexes
-    op.drop_index("idx_escalations_org_tags", table_name="escalations")
     op.drop_index("idx_escalations_tags", table_name="escalations")
     op.drop_index("idx_rule_versions_rule_version", table_name="rule_versions")
     op.drop_index("idx_rule_versions_rule_id", table_name="rule_versions")
