@@ -1017,17 +1017,599 @@ export default function Docs() {
     { id: "security", label: "Security" }
   ];
 
+  const generateMarkdown = () => {
+    return `# Signal Documentation v${SIGNALOPS_VERSION}
+
+Signal is an operational intelligence system that helps AI agents make consistent decisions by learning from human judgment.
+
+## Table of Contents
+
+1. [Quickstart (5min)](#quickstart-5min)
+2. [Core Concepts](#core-concepts)
+3. [Installation](#installation)
+4. [Complete Examples](#complete-examples)
+5. [API Reference](#api-reference)
+6. [Common Patterns](#common-patterns)
+7. [Dashboard Guide](#dashboard-guide)
+8. [Error Handling](#error-handling)
+9. [Troubleshooting](#troubleshooting)
+10. [Best Practices](#best-practices)
+11. [Security](#security)
+
+---
+
+## Quickstart (5min)
+
+### Step 1: Install Signal
+
+\`\`\`bash
+pip install signalops
+\`\`\`
+
+### Step 2: Get Your API Key
+
+1. Go to ${DASHBOARD_URL}
+2. Sign up and create an account
+3. Create an organization (or open an existing one)
+4. Go to Organization Settings
+5. Click "Add new key", name it, and copy it
+6. Save this key securely - it starts with \`sk_live_\`
+
+### Step 3: Write Your First Agent
+
+\`\`\`python
+import asyncio
+import signalops
+
+# Configure Signal
+signalops.configure(api_key="sk_live_your_api_key_here")
+
+async def handle_refund_request(customer_id, amount, reason):
+    # Ask Signal for a decision
+    result = await signalops.escalate(
+        agent_id="customer-support-refunds",
+        question="Should I issue a refund?",
+        context=f"""Customer ID: {customer_id}
+Order Amount: $\${amount}
+Reason: {reason}
+Customer Tier: premium"""
+    )
+
+    # Act on the decision
+    if result.decision == "approve":
+        print(f"✓ Refund approved")
+        return True
+    else:
+        print(f"✗ Refund denied")
+        return False
+
+# Run it
+asyncio.run(handle_refund_request("cust_123", 150, "damaged"))
+\`\`\`
+
+---
+
+## Core Concepts
+
+### What is Signal?
+
+Signal is an operational intelligence system that helps AI agents make consistent decisions by learning from human judgment. When your agent encounters a decision it's uncertain about, Signal handles the escalation, captures the human decision, and automatically creates rules so future similar situations are handled automatically.
+
+### How It Works
+
+1. **Agent Escalates:** Your agent calls signalops.escalate() with a question and context
+2. **Signal Checks Rules:** If a matching rule exists, Signal returns the decision instantly
+3. **Human Review (if needed):** If no rule matches, Signal sends the decision to Slack for human review
+4. **Rule Creation:** After human approval, Signal creates a rule so future similar cases are auto-resolved
+5. **Continuous Learning:** Your agents get smarter over time as more rules are created
+
+### Key Features
+
+- **Instant Decisions:** Rules are checked in milliseconds for auto-resolved cases
+- **Slack Integration:** Human reviewers get notified in Slack with full context
+- **Dashboard:** View all escalations, rules, and metrics in a web dashboard
+- **Rule Management:** Edit, approve, or discard proposed rules before they go live
+- **Analytics:** Track auto-resolution rates, response times, and decision trends
+
+---
+
+## Installation
+
+### Python Package
+
+Signal is available as a Python package. Install it using pip:
+
+\`\`\`bash
+pip install signalops
+\`\`\`
+
+Or add it to your requirements.txt:
+
+\`\`\`
+signalops>=1.0.0
+\`\`\`
+
+### Requirements
+
+- Python 3.8 or higher
+- asyncio support (Python 3.7+ includes this by default)
+- Active internet connection for API calls
+- A Signal account and API key
+
+### Verify Installation
+
+Check that Signal is installed correctly:
+
+\`\`\`bash
+python -c "import signalops; print(signalops.__version__)"
+\`\`\`
+
+---
+
+## Complete Examples
+
+### Content Moderation
+
+\`\`\`python
+async def moderate_user_content(post_id, content, user_history):
+    result = await signalops.escalate(
+        agent_id="content-moderation",
+        question="Should this content be approved?",
+        context=f"""Post ID: {post_id}
+Content: {content}
+User has {user_history["violations"]} prior violations
+User tier: {user_history["tier"]}""",
+        metadata={"post_id": post_id, "user_id": user_history["id"]}
+    )
+
+    if result.decision == "approve":
+        publish_post(post_id)
+    else:
+        reject_post(post_id)
+
+    return result.decision
+\`\`\`
+
+### Financial Approvals
+
+\`\`\`python
+async def approve_expense(expense_id, amount, category, employee_level):
+    result = await signalops.escalate(
+        agent_id="expense-approvals",
+        question="Should this expense be approved?",
+        context=f"""Expense ID: {expense_id}
+Amount: $\${amount}
+Category: {category}
+Employee Level: {employee_level}""",
+        action="approve_expense",
+        timeout_seconds=1800  # 30 minutes
+    )
+
+    if result.auto_resolved:
+        print(f"Auto-approved by rule {result.rule_id}")
+
+    return result.decision == "approve"
+\`\`\`
+
+### Customer Support Routing
+
+\`\`\`python
+async def route_support_ticket(ticket_id, issue_type, customer_value):
+    result = await signalops.escalate(
+        agent_id="support-routing",
+        question="Should this ticket be escalated to senior support?",
+        context=f"""Ticket: {ticket_id}
+Issue: {issue_type}
+Customer LTV: $\${customer_value}
+Priority: {"high" if customer_value > 10000 else "normal"}"""
+    )
+
+    if result.decision == "approve":
+        assign_to_senior_team(ticket_id)
+    else:
+        assign_to_standard_team(ticket_id)
+
+    return result
+\`\`\`
+
+---
+
+## API Reference
+
+### signalops.configure()
+
+Configure Signal globally. Call this once at the start of your application.
+
+\`\`\`python
+signalops.configure(
+    api_key="sk_live_your_api_key_here",
+    base_url="https://signal-omega-tan.vercel.app"  # Optional
+)
+\`\`\`
+
+**Parameters:**
+- \`api_key\` (str, required): Your Signal API key
+- \`base_url\` (str, optional): Custom API endpoint URL
+
+### signalops.escalate()
+
+Escalate a decision to Signal. Returns a decision from an existing rule, or waits for human review.
+
+\`\`\`python
+result = await signalops.escalate(
+    agent_id="customer-support-refunds",
+    question="Should I issue a refund?",
+    context="Customer ID: cust_123\\nAmount: $150",
+    action="refund_request",  # optional
+    metadata={"customer_id": "cust_123"},  # optional
+    timeout_seconds=600  # optional, default 3600
+)
+\`\`\`
+
+**Parameters:**
+- \`agent_id\` (str, required): Unique identifier for your agent
+- \`question\` (str, required): The decision question
+- \`context\` (str, required): Relevant context for the decision
+- \`action\` (str, optional): Action being requested
+- \`metadata\` (dict, optional): Additional structured data
+- \`timeout_seconds\` (int, optional): Max wait time (default: 3600)
+
+**Returns:**
+- \`decision\` (str): The decision ("approve" or "reject")
+- \`rule_id\` (str | None): ID of the matching rule (if auto-resolved)
+- \`auto_resolved\` (bool): Whether decision was made by a rule
+
+---
+
+## Common Patterns
+
+### Fallback on Timeout
+
+Always have a safe fallback when decisions time out:
+
+\`\`\`python
+from signalops.exceptions import SignalTimeout
+
+try:
+    result = await signalops.escalate(
+        agent_id="fraud-detection",
+        question="Is this transaction fraudulent?",
+        context=f"Amount: $\${amount}, Location: {location}",
+        timeout_seconds=120
+    )
+    block_transaction = result.decision == "reject"
+except SignalTimeout:
+    # Default to blocking suspicious transactions
+    block_transaction = amount > 10000 or is_high_risk_location(location)
+\`\`\`
+
+### Parallel Escalations
+
+Make multiple independent decisions in parallel:
+
+\`\`\`python
+import asyncio
+
+# Run multiple escalations concurrently
+results = await asyncio.gather(
+    signalops.escalate(
+        agent_id="content-mod",
+        question="Should this be approved?",
+        context=f"Post: {post_text}"
+    ),
+    signalops.escalate(
+        agent_id="user-verification",
+        question="Should this user be verified?",
+        context=f"User: {user_id}, History: {history}"
+    ),
+    return_exceptions=True
+)
+
+content_approved, user_verified = results
+\`\`\`
+
+### Conditional Escalation
+
+Only escalate when needed based on confidence or thresholds:
+
+\`\`\`python
+async def handle_refund(amount, reason, customer_tier):
+    # Auto-approve small refunds for premium customers
+    if customer_tier == "premium" and amount < 50:
+        return "approve"
+
+    # Escalate everything else
+    result = await signalops.escalate(
+        agent_id="refunds",
+        question="Should I approve this refund?",
+        context=f"Amount: $\${amount}\\nReason: {reason}\\nTier: {customer_tier}"
+    )
+
+    return result.decision
+\`\`\`
+
+---
+
+## Dashboard Guide
+
+### Getting Started
+
+1. Go to ${DASHBOARD_URL}
+2. Sign in with your account
+3. Select your organization from the dropdown
+4. You'll see three main sections: Escalations, Rules, and Settings
+
+### Escalations Page
+
+The Escalations page shows all decisions your agents have requested. You can:
+
+- View pending escalations waiting for human review
+- See auto-resolved cases handled by existing rules
+- Filter by agent, status, or time period
+- Review the full context and metadata for each escalation
+- Manually approve or reject pending decisions
+
+### Rules Page
+
+The Rules page shows all your active and proposed rules:
+
+- Active rules that are currently handling decisions automatically
+- Pending rules waiting for your approval
+- View rule conditions, actions, and exceptions
+- Edit rule descriptions before approving them
+- See how many times each rule has been applied
+- Deactivate or delete rules that are no longer needed
+
+### Organization Settings
+
+- Manage API keys (create, revoke, rotate)
+- Configure Slack integration for notifications
+- Set up webhooks for custom integrations
+- Invite team members to your organization
+- View usage metrics and billing information
+
+---
+
+## Error Handling
+
+### Exception Types
+
+Signal can raise the following exceptions:
+
+- \`SignalTimeout\` - Decision took longer than timeout_seconds
+- \`SignalAuthError\` - Invalid or missing API key
+- \`SignalNetworkError\` - Network connectivity issues
+- \`SignalError\` - Base exception for all Signal errors
+
+### Handling Errors
+
+\`\`\`python
+import signalops
+from signalops.exceptions import (
+    SignalTimeout,
+    SignalAuthError,
+    SignalNetworkError,
+    SignalError
+)
+
+try:
+    result = await signalops.escalate(
+        agent_id="my-agent",
+        question="Should I proceed?",
+        context="Important context",
+        timeout_seconds=300
+    )
+except SignalTimeout:
+    # Decision took too long - use safe default
+    logger.warning("Signal timeout - using fallback")
+    result = use_safe_default()
+except SignalAuthError:
+    # API key is invalid
+    logger.error("Signal auth failed - check API key")
+    raise
+except SignalNetworkError as e:
+    # Network issue - maybe retry
+    logger.error(f"Signal network error: {e}")
+    result = retry_with_backoff()
+except SignalError as e:
+    # Catch-all for other Signal errors
+    logger.error(f"Signal error: {e}")
+    result = use_safe_default()
+\`\`\`
+
+### Retry Logic
+
+Implement retry logic for transient failures:
+
+\`\`\`python
+import asyncio
+from signalops.exceptions import SignalNetworkError
+
+async def escalate_with_retry(max_retries=3, **kwargs):
+    for attempt in range(max_retries):
+        try:
+            return await signalops.escalate(**kwargs)
+        except SignalNetworkError as e:
+            if attempt == max_retries - 1:
+                raise
+
+            wait_time = 2 ** attempt  # Exponential backoff
+            logger.warning(f"Retry {attempt + 1}/{max_retries} after {wait_time}s")
+            await asyncio.sleep(wait_time)
+
+# Usage
+result = await escalate_with_retry(
+    agent_id="my-agent",
+    question="Should I proceed?",
+    context="Context here"
+)
+\`\`\`
+
+---
+
+## Troubleshooting
+
+### Escalations Not Appearing in Slack
+
+1. Verify Slack integration is configured in Organization Settings
+2. Check that the Signal app is installed in your Slack workspace
+3. Ensure the notification channel exists and Signal bot is invited
+4. Look for errors in the dashboard Escalations page
+
+### Timeout Errors
+
+If you're getting timeout errors:
+
+- Increase timeout_seconds parameter (default is 3600 / 1 hour)
+- Ensure humans are actively reviewing escalations in Slack
+- Consider implementing a fallback decision for timeout cases
+- Check if your network connection is stable
+
+### Rules Not Auto-Resolving
+
+- Check that the rule status is "active" in the Rules page
+- Verify the context matches the rule conditions
+- Ensure you're using the same agent_id as when the rule was created
+- Review rule exceptions - they may be excluding your case
+- Check if context format is consistent with previous escalations
+
+---
+
+## Best Practices
+
+### Writing Good Context
+
+The quality of your escalations depends on the context you provide. Good context should:
+
+- Include all relevant information needed to make the decision
+- Be structured consistently (use the same format each time)
+- Include quantitative data (amounts, counts, percentages)
+- Mention any relevant history or patterns
+- Avoid including sensitive information like passwords or tokens
+
+### Agent IDs
+
+- Use descriptive agent_id names (e.g., "customer-support-refunds" not "agent1")
+- Keep agent_id consistent for the same type of decisions
+- Use hyphens to separate words (not underscores or spaces)
+- Organize by department-function-subdomain if helpful
+
+### Error Handling
+
+\`\`\`python
+import signalops
+from signalops.exceptions import SignalTimeout, SignalError
+
+try:
+    result = await signalops.escalate(
+        agent_id="my-agent",
+        question="Should I proceed?",
+        context="Important decision context",
+        timeout_seconds=300
+    )
+except SignalTimeout:
+    # Handle timeout - decision took too long
+    result = default_safe_action()
+except SignalError as e:
+    # Handle other Signal errors
+    logger.error(f"Signal error: {e}")
+    result = fallback_decision()
+\`\`\`
+
+### Testing
+
+- Use different API keys for development, staging, and production
+- Test with real-looking data to ensure rules work correctly
+- Review proposed rules carefully before approving them
+- Start with small rollouts before applying rules broadly
+- Monitor auto-resolution rates in the dashboard
+
+---
+
+## Security
+
+### API Key Management
+
+- Never commit API keys to version control
+- Use environment variables to store keys
+- Rotate keys regularly (every 90 days recommended)
+- Use different keys for development, staging, and production
+- Revoke keys immediately if compromised
+
+\`\`\`python
+import os
+import signalops
+
+# Load API key from environment
+api_key = os.environ.get("SIGNAL_API_KEY")
+if not api_key:
+    raise ValueError("SIGNAL_API_KEY environment variable not set")
+
+signalops.configure(api_key=api_key)
+\`\`\`
+
+### Sensitive Data
+
+Be careful about what data you include in escalation context:
+
+- Do not include passwords, tokens, or API keys
+- Avoid including full credit card numbers or SSNs
+- Redact or mask sensitive personal information
+- Consider data retention policies - context is stored
+- Review Slack channel permissions for escalations
+
+\`\`\`python
+# Bad - includes sensitive data
+context = f"Card: {full_card_number}, CVV: {cvv}"
+
+# Good - masks sensitive data
+masked_card = f"****{full_card_number[-4:]}"
+context = f"Card ending in: {masked_card}, Amount: $\${amount}"
+\`\`\`
+
+### Network Security
+
+- All Signal API calls are made over HTTPS
+- TLS 1.2 or higher is required
+- API endpoints support certificate pinning
+- Webhook signatures should be verified (if using webhooks)
+
+### Compliance
+
+Signal is designed with compliance in mind:
+
+- SOC 2 Type II compliant infrastructure
+- GDPR-compliant data handling
+- Data residency options available (contact support)
+- Audit logs for all escalations and decisions
+- Data retention policies can be configured
+
+---
+
+Generated with Signal v${SIGNALOPS_VERSION}
+Visit ${DASHBOARD_URL} for more information.
+`;
+  };
+
   const handleDownload = () => {
-    const markdown = generateMarkdown();
-    const blob = new Blob([markdown], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `signal-docs-v${SIGNALOPS_VERSION}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      const markdown = generateMarkdown();
+      const blob = new Blob([markdown], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `signal-docs-v${SIGNALOPS_VERSION}.md`;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+    } catch (error) {
+      console.error("Download failed:", error);
+      alert("Download failed. Please try again.");
+    }
   };
 
   return (
