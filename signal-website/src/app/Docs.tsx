@@ -1234,27 +1234,7 @@ export default function Docs() {
 
             <SectionDivider />
 
-            <section id="api-reference" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
-              <Reveal>
-                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>API Reference</h2>
-
-                <div style={{ marginBottom: "3rem" }}>
-                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.configure()</h3>
-                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Configure Signal globally. Call this once at the start of your application.</p>
-                  <CodeBlock language="python" code={'signalops.configure(\n    api_key="sk_live_your_api_key_here",\n    base_url="https://signal-omega-tan.vercel.app"  # Optional\n)'} />
-                </div>
-
-                <div>
-                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.escalate()</h3>
-                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Escalate a decision to Signal. Returns a decision from an existing rule, or waits for human review.</p>
-                  <CodeBlock language="python" code={'result = await signalops.escalate(\n    agent_id="customer-support-refunds",\n    question="Should I issue a refund?",\n    context="Customer ID: cust_123\\nAmount: $150",\n    action="refund_request",  # optional\n    metadata={"customer_id": "cust_123"},  # optional\n    timeout_seconds=600  # optional, default 3600\n)\n\n# Returns: decision (str), rule_id (str | None), auto_resolved (bool)'} />
-                </div>
-              </Reveal>
-            </section>
-
-            <SectionDivider />
-
-            <section id="core-concepts" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+            <section id="concepts" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
               <Reveal>
                 <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Core Concepts</h2>
 
@@ -1293,9 +1273,47 @@ export default function Docs() {
 
             <SectionDivider />
 
+            <section id="installation" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Installation</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Python Package</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    Signal is available as a Python package. Install it using pip:
+                  </p>
+                  <CodeBlock language="bash" code="pip install signalops" />
+                  <p style={{ marginTop: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    Or add it to your requirements.txt:
+                  </p>
+                  <CodeBlock language="text" code="signalops>=1.0.0" />
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Requirements</h3>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Python 3.8 or higher</li>
+                    <li>asyncio support (Python 3.7+ includes this by default)</li>
+                    <li>Active internet connection for API calls</li>
+                    <li>A Signal account and API key</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Verify Installation</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    Check that Signal is installed correctly:
+                  </p>
+                  <CodeBlock language="bash" code={'python -c "import signalops; print(signalops.__version__)"'} />
+                </div>
+              </Reveal>
+            </section>
+
+            <SectionDivider />
+
             <section id="examples" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
               <Reveal>
-                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>More Examples</h2>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Complete Examples</h2>
 
                 <div style={{ marginBottom: "3rem" }}>
                   <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Content Moderation</h3>
@@ -1316,7 +1334,86 @@ export default function Docs() {
 
             <SectionDivider />
 
-            <section id="dashboard-guide" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+            <section id="api-reference" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>API Reference</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.configure()</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Configure Signal globally. Call this once at the start of your application.</p>
+                  <CodeBlock language="python" code={'signalops.configure(\n    api_key="sk_live_your_api_key_here",\n    base_url="https://signal-omega-tan.vercel.app"  # Optional\n)'} />
+                  <div style={{ marginTop: "1.5rem" }}>
+                    <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem", color: "#0d0d0b" }}>Parameters:</h4>
+                    <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>api_key</code> (str, required): Your Signal API key</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>base_url</code> (str, optional): Custom API endpoint URL</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.escalate()</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Escalate a decision to Signal. Returns a decision from an existing rule, or waits for human review.</p>
+                  <CodeBlock language="python" code={'result = await signalops.escalate(\n    agent_id="customer-support-refunds",\n    question="Should I issue a refund?",\n    context="Customer ID: cust_123\\nAmount: $150",\n    action="refund_request",  # optional\n    metadata={"customer_id": "cust_123"},  # optional\n    timeout_seconds=600  # optional, default 3600\n)'} />
+                  <div style={{ marginTop: "1.5rem", marginBottom: "1.5rem" }}>
+                    <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem", color: "#0d0d0b" }}>Parameters:</h4>
+                    <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>agent_id</code> (str, required): Unique identifier for your agent</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>question</code> (str, required): The decision question</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>context</code> (str, required): Relevant context for the decision</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>action</code> (str, optional): Action being requested</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>metadata</code> (dict, optional): Additional structured data</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>timeout_seconds</code> (int, optional): Max wait time (default: 3600)</li>
+                    </ul>
+                  </div>
+                  <div style={{ marginTop: "1.5rem" }}>
+                    <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem", color: "#0d0d0b" }}>Returns:</h4>
+                    <p style={{ marginBottom: "0.5rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Object with the following properties:</p>
+                    <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>decision</code> (str): The decision ("approve" or "reject")</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>rule_id</code> (str | None): ID of the matching rule (if auto-resolved)</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>auto_resolved</code> (bool): Whether decision was made by a rule</li>
+                    </ul>
+                  </div>
+                </div>
+              </Reveal>
+            </section>
+
+            <SectionDivider />
+
+            <section id="patterns" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Common Patterns</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Fallback on Timeout</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    Always have a safe fallback when decisions time out:
+                  </p>
+                  <CodeBlock language="python" code={'from signalops.exceptions import SignalTimeout\n\ntry:\n    result = await signalops.escalate(\n        agent_id="fraud-detection",\n        question="Is this transaction fraudulent?",\n        context=f"Amount: ${amount}, Location: {location}",\n        timeout_seconds=120\n    )\n    block_transaction = result.decision == "reject"\nexcept SignalTimeout:\n    # Default to blocking suspicious transactions\n    block_transaction = amount > 10000 or is_high_risk_location(location)'} />
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Parallel Escalations</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    Make multiple independent decisions in parallel:
+                  </p>
+                  <CodeBlock language="python" code={'import asyncio\n\n# Run multiple escalations concurrently\nresults = await asyncio.gather(\n    signalops.escalate(\n        agent_id="content-mod",\n        question="Should this be approved?",\n        context=f"Post: {post_text}"\n    ),\n    signalops.escalate(\n        agent_id="user-verification",\n        question="Should this user be verified?",\n        context=f"User: {user_id}, History: {history}"\n    ),\n    return_exceptions=True\n)\n\ncontent_approved, user_verified = results'} />
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Conditional Escalation</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    Only escalate when needed based on confidence or thresholds:
+                  </p>
+                  <CodeBlock language="python" code={'async def handle_refund(amount, reason, customer_tier):\n    # Auto-approve small refunds for premium customers\n    if customer_tier == "premium" and amount < 50:\n        return "approve"\n    \n    # Escalate everything else\n    result = await signalops.escalate(\n        agent_id="refunds",\n        question="Should I approve this refund?",\n        context=f"Amount: ${amount}\\nReason: {reason}\\nTier: {customer_tier}"\n    )\n    \n    return result.decision'} />
+                </div>
+              </Reveal>
+            </section>
+
+            <SectionDivider />
+
+            <section id="dashboard" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
               <Reveal>
                 <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Using the Dashboard</h2>
 
@@ -1422,6 +1519,40 @@ export default function Docs() {
 
             <SectionDivider />
 
+            <section id="errors" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Error Handling</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Exception Types</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    Signal can raise the following exceptions:
+                  </p>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>SignalTimeout</code> - Decision took longer than timeout_seconds</li>
+                    <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>SignalAuthError</code> - Invalid or missing API key</li>
+                    <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>SignalNetworkError</code> - Network connectivity issues</li>
+                    <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>SignalError</code> - Base exception for all Signal errors</li>
+                  </ul>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Handling Errors</h3>
+                  <CodeBlock language="python" code={'import signalops\nfrom signalops.exceptions import (\n    SignalTimeout,\n    SignalAuthError,\n    SignalNetworkError,\n    SignalError\n)\n\ntry:\n    result = await signalops.escalate(\n        agent_id="my-agent",\n        question="Should I proceed?",\n        context="Important context",\n        timeout_seconds=300\n    )\nexcept SignalTimeout:\n    # Decision took too long - use safe default\n    logger.warning("Signal timeout - using fallback")\n    result = use_safe_default()\nexcept SignalAuthError:\n    # API key is invalid\n    logger.error("Signal auth failed - check API key")\n    raise\nexcept SignalNetworkError as e:\n    # Network issue - maybe retry\n    logger.error(f"Signal network error: {e}")\n    result = retry_with_backoff()\nexcept SignalError as e:\n    # Catch-all for other Signal errors\n    logger.error(f"Signal error: {e}")\n    result = use_safe_default()'} />
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Retry Logic</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    Implement retry logic for transient failures:
+                  </p>
+                  <CodeBlock language="python" code={'import asyncio\nfrom signalops.exceptions import SignalNetworkError\n\nasync def escalate_with_retry(max_retries=3, **kwargs):\n    for attempt in range(max_retries):\n        try:\n            return await signalops.escalate(**kwargs)\n        except SignalNetworkError as e:\n            if attempt == max_retries - 1:\n                raise\n            \n            wait_time = 2 ** attempt  # Exponential backoff\n            logger.warning(f"Retry {attempt + 1}/{max_retries} after {wait_time}s")\n            await asyncio.sleep(wait_time)\n\n# Usage\nresult = await escalate_with_retry(\n    agent_id="my-agent",\n    question="Should I proceed?",\n    context="Context here"\n)'} />
+                </div>
+              </Reveal>
+            </section>
+
+            <SectionDivider />
+
             <section id="troubleshooting" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
               <Reveal>
                 <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Troubleshooting</h2>
@@ -1457,6 +1588,69 @@ export default function Docs() {
                     <li>Ensure you're using the same agent_id as when the rule was created</li>
                     <li>Review rule exceptions - they may be excluding your case</li>
                     <li>Check if context format is consistent with previous escalations</li>
+                  </ul>
+                </div>
+              </Reveal>
+            </section>
+
+            <SectionDivider />
+
+            <section id="security" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Security</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>API Key Management</h3>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Never commit API keys to version control</li>
+                    <li>Use environment variables to store keys</li>
+                    <li>Rotate keys regularly (every 90 days recommended)</li>
+                    <li>Use different keys for development, staging, and production</li>
+                    <li>Revoke keys immediately if compromised</li>
+                  </ul>
+                  <div style={{ marginTop: "1rem" }}>
+                    <CodeBlock language="python" code={'import os\nimport signalops\n\n# Load API key from environment\napi_key = os.environ.get("SIGNAL_API_KEY")\nif not api_key:\n    raise ValueError("SIGNAL_API_KEY environment variable not set")\n\nsignalops.configure(api_key=api_key)'} />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Sensitive Data</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    Be careful about what data you include in escalation context:
+                  </p>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Do not include passwords, tokens, or API keys</li>
+                    <li>Avoid including full credit card numbers or SSNs</li>
+                    <li>Redact or mask sensitive personal information</li>
+                    <li>Consider data retention policies - context is stored</li>
+                    <li>Review Slack channel permissions for escalations</li>
+                  </ul>
+                  <div style={{ marginTop: "1rem" }}>
+                    <CodeBlock language="python" code={'# Bad - includes sensitive data\ncontext = f"Card: {full_card_number}, CVV: {cvv}"\n\n# Good - masks sensitive data\nmasked_card = f"****{full_card_number[-4:]}"\ncontext = f"Card ending in: {masked_card}, Amount: ${amount}"'} />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Network Security</h3>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>All Signal API calls are made over HTTPS</li>
+                    <li>TLS 1.2 or higher is required</li>
+                    <li>API endpoints support certificate pinning</li>
+                    <li>Webhook signatures should be verified (if using webhooks)</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Compliance</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    Signal is designed with compliance in mind:
+                  </p>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>SOC 2 Type II compliant infrastructure</li>
+                    <li>GDPR-compliant data handling</li>
+                    <li>Data residency options available (contact support)</li>
+                    <li>Audit logs for all escalations and decisions</li>
+                    <li>Data retention policies can be configured</li>
                   </ul>
                 </div>
               </Reveal>
