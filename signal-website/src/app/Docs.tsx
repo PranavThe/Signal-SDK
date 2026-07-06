@@ -34,6 +34,16 @@ function useIsNarrow(breakpoint: number) {
   return isNarrow;
 }
 
+// Helper components for cleaner rendering
+const CodeBlock = ({ language, code }: { language: string; code: string }) => (
+  <div style={{ borderRadius: "0.5rem", overflow: "hidden", background: "#0d0d0b", border: "1px solid rgba(255,255,255,0.06)" }}>
+    <div style={{ padding: "0.5rem 1rem", fontSize: "0.75rem", fontFamily: "'Geist Mono', monospace", color: "#4a4a47", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{language}</div>
+    <pre style={{ padding: "1.25rem", fontSize: "0.875rem", lineHeight: 1.6, fontFamily: "'Geist Mono', monospace", color: "#f7f7f5", margin: 0, overflowX: "auto" }}>{code}</pre>
+  </div>
+);
+
+const SectionDivider = () => <div style={{ height: "1px", background: "rgba(13,13,11,0.1)", marginBottom: "5rem" }} />;
+
 // Function to generate markdown from the docs
 function generateMarkdown(): string {
   return `# Signal Documentation
@@ -1193,24 +1203,120 @@ export default function Docs() {
 
             <div style={{ height: "1px", background: "rgba(13,13,11,0.1)", marginBottom: "4rem" }} />
 
-            {/* Content sections would go here - I'll add them in the next part */}
-            {/* For now, I'll add a note that the full content is in the markdown */}
+            <section id="quickstart" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Quickstart (5 Minutes)</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Step 1: Install Signal</h3>
+                  <CodeBlock language="bash" code="pip install signalops" />
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Step 2: Get Your API Key</h3>
+                  <ol style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Go to <a href={DASHBOARD_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#0d0d0b", fontWeight: 600 }}>{DASHBOARD_URL}</a></li>
+                    <li>Sign up and create an account</li>
+                    <li>Create an organization (or open an existing one)</li>
+                    <li>Go to Organization Settings</li>
+                    <li>Click "Add new key", name it, and copy it</li>
+                    <li>Save this key securely - it starts with <code style={{ background: "#0d0d0b", color: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>sk_live_</code></li>
+                  </ol>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Step 3: Write Your First Agent</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Here's a complete working example:</p>
+                  <CodeBlock language="python" code={`import asyncio
+import signalops
+
+# Configure Signal
+signalops.configure(api_key="sk_live_your_api_key_here")
+
+async def handle_refund_request(customer_id, amount, reason):
+    # Ask Signal for a decision
+    result = await signalops.escalate(
+        agent_id="customer-support-refunds",
+        question="Should I issue a refund?",
+        context=f"""Customer ID: {customer_id}
+Order Amount: $${amount}
+Reason: {reason}
+Customer Tier: premium"""
+    )
+
+    # Act on the decision
+    if result.decision == "approve":
+        print(f"✓ Refund approved")
+        return True
+    else:
+        print(f"✗ Refund denied")
+        return False
+
+# Run it
+asyncio.run(handle_refund_request("cust_123", 150, "damaged"))`} />
+                </div>
+              </Reveal>
+            </section>
+
+            <SectionDivider />
+
+            <section id="api-reference" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>API Reference</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.configure()</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Configure Signal globally. Call this once at the start of your application.</p>
+                  <CodeBlock language="python" code={`signalops.configure(
+    api_key="sk_live_your_api_key_here",
+    base_url="https://signal-omega-tan.vercel.app"  # Optional
+)`} />
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.escalate()</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Escalate a decision to Signal. Returns a decision from an existing rule, or waits for human review.</p>
+                  <CodeBlock language="python" code={`result = await signalops.escalate(
+    agent_id="customer-support-refunds",
+    question="Should I issue a refund?",
+    context="Customer ID: cust_123\\nAmount: $$150",
+    action="refund_request",  # optional
+    metadata={"customer_id": "cust_123"},  # optional
+    timeout_seconds=600  # optional, default 3600
+)
+
+# Returns: decision (str), rule_id (str | None), auto_resolved (bool)`} />
+                </div>
+              </Reveal>
+            </section>
+
+            <SectionDivider />
+
             <Reveal>
-              <div style={{ padding: "2rem", background: "#fff", borderRadius: "0.5rem", border: "1px solid rgba(13,13,11,0.07)" }}>
-                <h2 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "1rem", color: "#0d0d0b" }}>
-                  📖 Complete Documentation Available
-                </h2>
-                <p style={{ fontSize: "1.0625rem", lineHeight: 1.7, color: "#4a4a47", marginBottom: "1.5rem" }}>
-                  The full, comprehensive documentation is available for download. Click the "Download as Markdown" button above to get the complete guide including:
+              <div style={{ padding: "3rem", borderRadius: "0.5rem", background: "#0d0d0b", border: "1px solid rgba(255,255,255,0.06)", textAlign: "center" }}>
+                <h3 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "1rem", color: "#f7f7f5" }}>Want the Complete Guide?</h3>
+                <p style={{ fontSize: "1.0625rem", marginBottom: "2rem", color: "#9a9a97" }}>
+                  Download the full documentation including examples, patterns, troubleshooting, security best practices, and more.
                 </p>
-                <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
-                  <li>5-minute quickstart with complete working examples</li>
-                  <li>Detailed API reference for all functions</li>
-                  <li>Common patterns and best practices</li>
-                  <li>Error handling and troubleshooting</li>
-                  <li>Dashboard guide with screenshots</li>
-                  <li>Security recommendations</li>
-                </ul>
+                <button
+                  onClick={handleDownload}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    padding: "1rem 2rem",
+                    fontSize: "0.9375rem",
+                    fontWeight: 700,
+                    background: "#f7f7f5",
+                    color: "#0d0d0b",
+                    border: "none",
+                    borderRadius: "0.375rem",
+                    cursor: "pointer"
+                  }}
+                >
+                  <Download size={18} />
+                  Download Complete Docs
+                </button>
               </div>
             </Reveal>
           </article>
