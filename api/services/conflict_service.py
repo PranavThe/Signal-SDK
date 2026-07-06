@@ -256,6 +256,49 @@ class ConflictService:
 
         return warnings
 
+    async def _generate_plain_english_explanation(
+        self,
+        new_rule: Rule,
+        existing_rule: Rule,
+    ) -> str:
+        """Generate a plain English explanation of why two rules conflict using LLM."""
+        prompt = f"""You are explaining a rule conflict to a business user. Two rules conflict when they could both apply to the same situation but prescribe different actions.
+
+New rule:
+WHEN: {new_rule.condition_description}
+DO: {new_rule.action_description}
+
+Existing rule:
+WHEN: {existing_rule.condition_description}
+DO: {existing_rule.action_description}
+
+Explain in 1-2 simple sentences why these rules conflict. Focus on:
+1. What specific situation would trigger both rules
+2. What the inconsistency is (one approves, the other rejects, etc.)
+3. If there are subtle differences like different identifiers for the same person/thing, point that out
+
+Use plain English. Avoid technical jargon. Be specific about the scenario that causes the conflict.
+
+Example good explanation: "When Alice deploys a bugfix with over 50 files, both rules would apply. The first rule would reject it because you wrote 'alice' while the second rule expects 'alice@company.com' - these are treated as different people."
+
+Respond with ONLY the explanation text, nothing else."""
+
+        try:
+            message = await self.client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=200,
+                temperature=0,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            explanation = _text_from_message(message).strip()
+            # Fallback if response is empty or too short
+            if len(explanation) < 20:
+                return "Both rules can apply to the same structured context, but they prescribe different actions."
+            return explanation
+        except Exception:
+            logger.exception("Could not generate plain English conflict explanation")
+            return "Both rules can apply to the same structured context, but they prescribe different actions."
+
     async def _detect_structural_conflicts(
         self,
         session: AsyncSession,
@@ -281,9 +324,9 @@ class ConflictService:
             if not _rules_can_overlap(new_rule, existing_rule):
                 continue
 
-            explanation = (
-                "Both rules can apply to the same structured context, but they prescribe different actions."
-            )
+            # Generate plain English explanation using LLM
+            explanation = await self._generate_plain_english_explanation(new_rule, existing_rule)
+
             session.add(
                 RuleConflict(
                     rule_a_id=new_rule.id,

@@ -303,6 +303,7 @@ async def process_slack_action(action_id: str, value: str) -> None:
 
             if action_id == "rule_edit":
                 rule = await _get_rule(session, value)
+                # Allow editing rules in any status (pending_approval, pending_edit, or active)
                 rule.status = "pending_edit"
                 rule.updated_at = datetime.now(UTC)
                 await session.commit()
@@ -348,7 +349,8 @@ async def process_rule_edit_submission(rule_id: str, edit_text: str) -> None:
     try:
         async with AsyncSessionLocal() as session:
             rule = await session.get(Rule, UUID(rule_id))
-            if rule is None or rule.status not in {"pending_edit", "pending_approval"}:
+            # Allow editing rules in any status (pending_edit, pending_approval, or active)
+            if rule is None or rule.status not in {"pending_edit", "pending_approval", "active"}:
                 return
 
             escalation = await session.get(Escalation, rule.source_escalation_id) if rule.source_escalation_id else None
@@ -362,9 +364,11 @@ async def process_rule_edit_submission(rule_id: str, edit_text: str) -> None:
             rule.structured_conditions = revised.structured_conditions
             rule.structured_action = revised.structured_action
             rule.extraction_confidence = revised.confidence
+            # Set to pending_approval to require re-approval (even if it was previously active)
             rule.status = "pending_approval"
             rule.updated_at = datetime.now(UTC)
             await session.flush()
+            # Re-run conflict detection after edits
             conflict_warnings = await _prepare_rule_semantics(session, rule)
             escalation.slack_rule_proposal_ts = await slack.send_rule_proposal(
                 escalation,
@@ -427,7 +431,8 @@ async def process_slack_message_event(event: dict) -> None:
                 return
 
             rule = await session.get(Rule, escalation.rule_id)
-            if rule is None or rule.status != "pending_edit":
+            # Allow editing rules in any status via threaded message
+            if rule is None or rule.status not in {"pending_edit", "pending_approval", "active"}:
                 return
 
             revised = await ExtractionService().revise_rule(escalation, rule, edit_text)
@@ -437,9 +442,11 @@ async def process_slack_message_event(event: dict) -> None:
             rule.structured_conditions = revised.structured_conditions
             rule.structured_action = revised.structured_action
             rule.extraction_confidence = revised.confidence
+            # Set to pending_approval to require re-approval
             rule.status = "pending_approval"
             rule.updated_at = datetime.now(UTC)
             await session.flush()
+            # Re-run conflict detection after edits
             conflict_warnings = await _prepare_rule_semantics(session, rule)
             escalation.slack_rule_proposal_ts = await slack.send_rule_proposal(
                 escalation,
