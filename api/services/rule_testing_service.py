@@ -8,7 +8,6 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.models import Rule
-from api.rule_engine import evaluate_rule
 
 logger = logging.getLogger(__name__)
 
