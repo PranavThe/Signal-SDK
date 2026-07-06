@@ -1008,16 +1008,24 @@ export default function Docs() {
   ];
 
   const handleDownload = () => {
-    const markdown = generateMarkdown();
-    const blob = new Blob([markdown], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `signal-docs-v${SIGNALOPS_VERSION}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      const markdown = generateMarkdown();
+      const blob = new Blob([markdown], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `signal-docs-v${SIGNALOPS_VERSION}.md`;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+    } catch (error) {
+      console.error("Download failed:", error);
+      alert("Download failed. Please try again.");
+    }
   };
 
   return (
@@ -1193,24 +1201,392 @@ export default function Docs() {
 
             <div style={{ height: "1px", background: "rgba(13,13,11,0.1)", marginBottom: "4rem" }} />
 
-            {/* Content sections would go here - I'll add them in the next part */}
-            {/* For now, I'll add a note that the full content is in the markdown */}
+            {/* Quickstart */}
+            <section id="quickstart" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Quickstart (5 Minutes)</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Step 1: Install Signal</h3>
+                  <div style={{ borderRadius: "0.5rem", overflow: "hidden", background: "#0d0d0b", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div style={{ padding: "0.5rem 1rem", fontSize: "0.75rem", fontFamily: "'Geist Mono', monospace", color: "#4a4a47", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>bash</div>
+                    <pre style={{ padding: "1.25rem", fontSize: "0.9375rem", fontFamily: "'Geist Mono', monospace", color: "#f7f7f5", margin: 0, overflowX: "auto" }}>pip install signalops</pre>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Step 2: Get Your API Key</h3>
+                  <ol style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Go to <a href={DASHBOARD_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#0d0d0b", fontWeight: 600 }}>{DASHBOARD_URL}</a></li>
+                    <li>Sign up and create an account</li>
+                    <li>Create an organization (or open an existing one)</li>
+                    <li>Go to Organization Settings</li>
+                    <li>Click "Add new key", name it, and copy it</li>
+                    <li>Save this key securely - it starts with <code style={{ background: "#0d0d0b", color: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>sk_live_</code></li>
+                  </ol>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Step 3: Write Your First Agent</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Here's a complete working example:</p>
+                  <div style={{ borderRadius: "0.5rem", overflow: "hidden", background: "#0d0d0b", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div style={{ padding: "0.5rem 1rem", fontSize: "0.75rem", fontFamily: "'Geist Mono', monospace", color: "#4a4a47", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>python</div>
+                    <pre style={{ padding: "1.25rem", fontSize: "0.875rem", lineHeight: 1.6, fontFamily: "'Geist Mono', monospace", color: "#f7f7f5", margin: 0, overflowX: "auto" }}>{`import asyncio
+import signalops
+
+# Configure Signal
+signalops.configure(api_key="sk_live_your_api_key_here")
+
+async def handle_refund_request(customer_id, amount, reason):
+    # Ask Signal for a decision
+    result = await signalops.escalate(
+        agent_id="customer-support-refunds",
+        question="Should I issue a refund?",
+        context=f"""Customer ID: {customer_id}
+Order Amount: ${amount}
+Reason: {reason}
+Customer Tier: premium"""
+    )
+
+    # Act on the decision
+    if result.decision == "approve":
+        print(f"✓ Refund approved")
+        return True
+    else:
+        print(f"✗ Refund denied")
+        return False
+
+# Run it
+asyncio.run(handle_refund_request("cust_123", 150, "damaged"))`}</pre>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>What Happens Next</h3>
+                  <div style={{ display: "grid", gap: "0.75rem" }}>
+                    {[
+                      "Your agent calls escalate()",
+                      "Signal checks if any existing rules match",
+                      "If a rule matches → Returns decision immediately",
+                      "If no rule → Shows in dashboard for human review",
+                      "Human approves/rejects and optionally creates a rule",
+                      "Your agent receives the decision and acts on it"
+                    ].map((step, i) => (
+                      <div key={i} style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                        <div style={{ width: "1.5rem", height: "1.5rem", borderRadius: "50%", background: "#0d0d0b", color: "#f7f7f5", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: 600, flexShrink: 0 }}>{i + 1}</div>
+                        <p style={{ margin: 0, color: "#4a4a47", fontSize: "0.9375rem" }}>{step}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Reveal>
+            </section>
+
+            <div style={{ height: "1px", background: "rgba(13,13,11,0.1)", marginBottom: "5rem" }} />
+
+            {/* Core Concepts */}
+            <section id="concepts" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Core Concepts</h2>
+
+                <div style={{ marginBottom: "2.5rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>What is Signal?</h3>
+                  <p style={{ fontSize: "1.0625rem", lineHeight: 1.7, color: "#4a4a47" }}>
+                    Signal is a human-in-the-loop decision framework for AI agents. Instead of hard-coding rules or letting your agent make risky decisions alone, Signal lets you escalate uncertain decisions to humans, learn from those decisions, and progressively automate as your agent builds up a rulebook.
+                  </p>
+                </div>
+
+                <div style={{ marginBottom: "2.5rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>Key Terms</h3>
+                  <div style={{ display: "grid", gap: "1rem" }}>
+                    {[
+                      { term: "Escalation", def: "A decision your agent asks Signal to make" },
+                      { term: "Rule", def: "A policy that auto-resolves future similar escalations" },
+                      { term: "Agent ID", def: "Identifier for your agent (e.g., \"customer-support-refunds\")" },
+                      { term: "Action", def: "Type of decision being made (e.g., \"refund_request\")" },
+                      { term: "Context", def: "Information about the decision (formatted as field:value pairs)" },
+                      { term: "Auto-resolved", def: "Decision was made by a rule without human input" },
+                      { term: "Autonomy Score", def: "Percentage of decisions handled automatically by rules" }
+                    ].map((item, i) => (
+                      <div key={i} style={{ padding: "1rem", background: "#ffffff", border: "1px solid rgba(13,13,11,0.07)", borderRadius: "0.375rem" }}>
+                        <strong style={{ color: "#0d0d0b", fontSize: "0.9375rem", fontFamily: "'Geist Mono', monospace" }}>{item.term}</strong>
+                        <p style={{ margin: "0.5rem 0 0 0", color: "#6a6a67", fontSize: "0.9375rem" }}>{item.def}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Reveal>
+            </section>
+
+            <div style={{ height: "1px", background: "rgba(13,13,11,0.1)", marginBottom: "5rem" }} />
+
+            {/* Installation */}
+            <section id="installation" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Installation</h2>
+
+                <div style={{ marginBottom: "2.5rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Requirements</h3>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Python 3.8 or higher</li>
+                    <li>An async-compatible environment (Signal uses async/await)</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Install via pip</h3>
+                  <div style={{ borderRadius: "0.5rem", overflow: "hidden", background: "#0d0d0b", border: "1px solid rgba(255,255,255,0.06)", marginBottom: "1.5rem" }}>
+                    <div style={{ padding: "0.5rem 1rem", fontSize: "0.75rem", fontFamily: "'Geist Mono', monospace", color: "#4a4a47", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>bash</div>
+                    <pre style={{ padding: "1.25rem", fontSize: "0.9375rem", fontFamily: "'Geist Mono', monospace", color: "#f7f7f5", margin: 0, overflowX: "auto" }}>pip install signalops</pre>
+                  </div>
+                  <p style={{ fontSize: "0.9375rem", color: "#6a6a67" }}>Latest version: <strong>{SIGNALOPS_VERSION}</strong></p>
+                </div>
+              </Reveal>
+            </section>
+
+            <div style={{ height: "1px", background: "rgba(13,13,11,0.1)", marginBottom: "5rem" }} />
+
+            {/* Examples */}
+            <section id="examples" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Complete Examples</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Content Moderation Agent</h3>
+                  <div style={{ borderRadius: "0.5rem", overflow: "hidden", background: "#0d0d0b", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div style={{ padding: "0.5rem 1rem", fontSize: "0.75rem", fontFamily: "'Geist Mono', monospace", color: "#4a4a47", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>python</div>
+                    <pre style={{ padding: "1.25rem", fontSize: "0.875rem", lineHeight: 1.6, fontFamily: "'Geist Mono', monospace", color: "#f7f7f5", margin: 0, overflowX: "auto" }}>{`import asyncio
+import signalops
+
+signalops.configure(api_key="sk_live_your_api_key_here")
+
+async def moderate_post(post_id, content, user_reputation):
+    result = await signalops.escalate(
+        agent_id="content-moderator",
+        question="Should I approve this post?",
+        context=f"""Post ID: {post_id}
+Content: {content[:200]}...
+User Reputation: {user_reputation}
+Contains URLs: {'yes' if 'http' in content else 'no'}"""
+    )
+    return result.decision == "approve"
+
+asyncio.run(moderate_post("post_789", "Great article!", 0.85))`}</pre>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Transaction Approval Agent</h3>
+                  <div style={{ borderRadius: "0.5rem", overflow: "hidden", background: "#0d0d0b", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div style={{ padding: "0.5rem 1rem", fontSize: "0.75rem", fontFamily: "'Geist Mono', monospace", color: "#4a4a47", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>python</div>
+                    <pre style={{ padding: "1.25rem", fontSize: "0.875rem", lineHeight: 1.6, fontFamily: "'Geist Mono', monospace", color: "#f7f7f5", margin: 0, overflowX: "auto" }}>{`import asyncio
+import signalops
+
+signalops.configure(api_key="sk_live_your_api_key_here")
+
+async def approve_transaction(txn_id, amount, risk_score):
+    result = await signalops.escalate(
+        agent_id="transaction-approvals",
+        question="Should I approve this transaction?",
+        context=f"""Transaction ID: {txn_id}
+Amount: $150.00
+Risk Score: {risk_score}
+International: no"""
+    )
+
+    if result.auto_resolved:
+        print(f"Auto-approved by rule {result.rule_id}")
+
+    return result.decision == "approve"
+
+asyncio.run(approve_transaction("txn_456", 5000.00, 0.3))`}</pre>
+                  </div>
+                </div>
+              </Reveal>
+            </section>
+
+            <div style={{ height: "1px", background: "rgba(13,13,11,0.1)", marginBottom: "5rem" }} />
+
+            {/* API Reference */}
+            <section id="api-reference" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>API Reference</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.configure()</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Configure Signal globally. Call this once at the start of your application.</p>
+                  <div style={{ borderRadius: "0.5rem", overflow: "hidden", background: "#0d0d0b", border: "1px solid rgba(255,255,255,0.06)", marginBottom: "1.5rem" }}>
+                    <div style={{ padding: "0.5rem 1rem", fontSize: "0.75rem", fontFamily: "'Geist Mono', monospace", color: "#4a4a47", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>python</div>
+                    <pre style={{ padding: "1.25rem", fontSize: "0.875rem", lineHeight: 1.6, fontFamily: "'Geist Mono', monospace", color: "#f7f7f5", margin: 0, overflowX: "auto" }}>{`signalops.configure(
+    api_key="sk_live_your_api_key_here",
+    base_url="https://signal-omega-tan.vercel.app"  # Optional
+)`}</pre>
+                  </div>
+                  <div style={{ display: "grid", gap: "0.75rem" }}>
+                    {[
+                      { param: "api_key", type: "str, required", desc: "Your Signal API key starting with sk_live_" },
+                      { param: "base_url", type: "str, optional", desc: "Signal API URL (default: hosted Signal)" }
+                    ].map((p, i) => (
+                      <div key={i} style={{ padding: "1rem", background: "#ffffff", border: "1px solid rgba(13,13,11,0.07)", borderRadius: "0.375rem" }}>
+                        <code style={{ fontSize: "0.875rem", fontWeight: 600, fontFamily: "'Geist Mono', monospace", color: "#0d0d0b" }}>{p.param}</code>
+                        <span style={{ fontSize: "0.875rem", marginLeft: "0.5rem", color: "#6a6a67" }}>({p.type}) — {p.desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.escalate()</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Escalate a decision to Signal. Returns a decision from an existing rule, or waits for human review.</p>
+                  <div style={{ borderRadius: "0.5rem", overflow: "hidden", background: "#0d0d0b", border: "1px solid rgba(255,255,255,0.06)", marginBottom: "1.5rem" }}>
+                    <div style={{ padding: "0.5rem 1rem", fontSize: "0.75rem", fontFamily: "'Geist Mono', monospace", color: "#4a4a47", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>python</div>
+                    <pre style={{ padding: "1.25rem", fontSize: "0.875rem", lineHeight: 1.6, fontFamily: "'Geist Mono', monospace", color: "#f7f7f5", margin: 0, overflowX: "auto" }}>{`result = await signalops.escalate(
+    agent_id="customer-support-refunds",
+    question="Should I issue a refund?",
+    context="Customer ID: cust_123\\nAmount: $150",
+    action="refund_request",  # optional
+    metadata={"customer_id": "cust_123"},  # optional
+    timeout_seconds=600  # optional, default 3600
+)`}</pre>
+                  </div>
+                  <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Parameters</h4>
+                  <div style={{ display: "grid", gap: "0.75rem", marginBottom: "1.5rem" }}>
+                    {[
+                      { param: "agent_id", type: "str, required", desc: "Unique identifier for your agent" },
+                      { param: "question", type: "str, required", desc: "Clear yes/no question" },
+                      { param: "context", type: "str, required", desc: "Decision context as field:value pairs" },
+                      { param: "action", type: "str, optional", desc: "Action identifier for grouping decisions" },
+                      { param: "metadata", type: "dict, optional", desc: "Additional structured data" },
+                      { param: "timeout_seconds", type: "int, optional", desc: "Wait time for decision (default: 3600)" }
+                    ].map((p, i) => (
+                      <div key={i} style={{ padding: "1rem", background: "#ffffff", border: "1px solid rgba(13,13,11,0.07)", borderRadius: "0.375rem" }}>
+                        <code style={{ fontSize: "0.875rem", fontWeight: 600, fontFamily: "'Geist Mono', monospace", color: "#0d0d0b" }}>{p.param}</code>
+                        <span style={{ fontSize: "0.875rem", marginLeft: "0.5rem", color: "#6a6a67" }}>({p.type}) — {p.desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Returns</h4>
+                  <p style={{ marginBottom: "0.75rem", color: "#4a4a47", fontSize: "1.0625rem" }}>EscalationResult object with:</p>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "0.9375rem" }}>
+                    <li><code style={{ fontFamily: "'Geist Mono', monospace" }}>decision</code> (str) — The decision made (e.g., "approve", "reject")</li>
+                    <li><code style={{ fontFamily: "'Geist Mono', monospace" }}>rule_id</code> (str | None) — ID of the rule that made this decision</li>
+                    <li><code style={{ fontFamily: "'Geist Mono', monospace" }}>auto_resolved</code> (bool) — Whether resolved by a rule (True) or human (False)</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.check()</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Check existing rules without escalating. Does not create an escalation or wait for humans.</p>
+                  <div style={{ borderRadius: "0.5rem", overflow: "hidden", background: "#0d0d0b", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div style={{ padding: "0.5rem 1rem", fontSize: "0.75rem", fontFamily: "'Geist Mono', monospace", color: "#4a4a47", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>python</div>
+                    <pre style={{ padding: "1.25rem", fontSize: "0.875rem", lineHeight: 1.6, fontFamily: "'Geist Mono', monospace", color: "#f7f7f5", margin: 0, overflowX: "auto" }}>{`result = await signalops.check(
+    action="refund_request",
+    context={"customer_tier": "premium", "amount": 150},
+    agent_id="customer-support-refunds"
+)
+
+# Returns: allowed (bool | None), rule_id (str | None)
+if result.allowed is True:
+    print("Approved by rule")
+elif result.allowed is False:
+    print("Denied by rule")
+else:
+    print("No rule found")`}</pre>
+                  </div>
+                </div>
+              </Reveal>
+            </section>
+
+            <div style={{ height: "1px", background: "rgba(13,13,11,0.1)", marginBottom: "5rem" }} />
+
+            {/* Best Practices */}
+            <section id="best-practices" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Best Practices</h2>
+
+                <div style={{ display: "grid", gap: "2rem" }}>
+                  <div>
+                    <h3 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>1. Write Clear Questions</h3>
+                    <div style={{ display: "grid", gap: "0.75rem" }}>
+                      <div style={{ padding: "1rem", borderRadius: "0.375rem", borderLeft: "4px solid #22c55e", background: "#f0fdf4" }}>
+                        <p style={{ fontSize: "0.9375rem", margin: 0, color: "#166534" }}><strong>✓ Good:</strong> "Should I issue a refund for this order?"</p>
+                      </div>
+                      <div style={{ padding: "1rem", borderRadius: "0.375rem", borderLeft: "4px solid #ef4444", background: "#fef2f2" }}>
+                        <p style={{ fontSize: "0.9375rem", margin: 0, color: "#991b1b" }}><strong>✗ Bad:</strong> "What should I do about this customer?"</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>2. Use Structured Context</h3>
+                    <p style={{ color: "#4a4a47", fontSize: "1.0625rem", marginBottom: "0.75rem" }}>Format context as field:value pairs on separate lines:</p>
+                    <div style={{ borderRadius: "0.5rem", overflow: "hidden", background: "#0d0d0b", border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <pre style={{ padding: "1.25rem", fontSize: "0.875rem", lineHeight: 1.6, fontFamily: "'Geist Mono', monospace", color: "#f7f7f5", margin: 0, overflowX: "auto" }}>{`context="""Customer ID: cust_123
+Order Amount: $150
+Reason: Product damaged
+Customer Tier: premium"""`}</pre>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>3. Use Descriptive Agent IDs</h3>
+                    <p style={{ marginBottom: "0.75rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Be specific about what each agent does:</p>
+                    <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                      {["customer-support-refunds", "content-moderator-posts", "transaction-fraud-detector"].map((id, i) => (
+                        <li key={i} style={{ paddingLeft: "1rem", borderLeft: "2px solid rgba(13,13,11,0.1)", color: "#4a4a47", fontSize: "0.9375rem" }}>
+                          <code style={{ fontFamily: "'Geist Mono', monospace", background: "#0d0d0b", color: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem" }}>{id}</code>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h3 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>4. Monitor Autonomy Trends</h3>
+                    <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                      <li>Initial deployments: 20-40% autonomy is normal</li>
+                      <li>Well-trained agents: 70-90% autonomy</li>
+                      <li>Goal: Increase autonomy while maintaining quality</li>
+                    </ul>
+                  </div>
+                </div>
+              </Reveal>
+            </section>
+
+            <div style={{ height: "1px", background: "rgba(13,13,11,0.1)", marginBottom: "5rem" }} />
+
+            {/* Download CTA */}
             <Reveal>
-              <div style={{ padding: "2rem", background: "#fff", borderRadius: "0.5rem", border: "1px solid rgba(13,13,11,0.07)" }}>
-                <h2 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "1rem", color: "#0d0d0b" }}>
-                  📖 Complete Documentation Available
-                </h2>
-                <p style={{ fontSize: "1.0625rem", lineHeight: 1.7, color: "#4a4a47", marginBottom: "1.5rem" }}>
-                  The full, comprehensive documentation is available for download. Click the "Download as Markdown" button above to get the complete guide including:
+              <div style={{ padding: "3rem", borderRadius: "0.5rem", background: "#0d0d0b", border: "1px solid rgba(255,255,255,0.06)", textAlign: "center" }}>
+                <h3 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "1rem", color: "#f7f7f5" }}>Want the Complete Guide?</h3>
+                <p style={{ fontSize: "1.0625rem", marginBottom: "2rem", color: "#9a9a97" }}>
+                  Download the full documentation as markdown including API reference, error handling, troubleshooting, security best practices, and more.
                 </p>
-                <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
-                  <li>5-minute quickstart with complete working examples</li>
-                  <li>Detailed API reference for all functions</li>
-                  <li>Common patterns and best practices</li>
-                  <li>Error handling and troubleshooting</li>
-                  <li>Dashboard guide with screenshots</li>
-                  <li>Security recommendations</li>
-                </ul>
+                <button
+                  onClick={handleDownload}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    padding: "1rem 2rem",
+                    fontSize: "0.9375rem",
+                    fontWeight: 700,
+                    background: "#f7f7f5",
+                    color: "#0d0d0b",
+                    border: "none",
+                    borderRadius: "0.375rem",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease"
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.background = "#ffffff";
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.background = "#f7f7f5";
+                  }}
+                >
+                  <Download size={18} />
+                  Download Complete Docs
+                </button>
               </div>
             </Reveal>
           </article>
