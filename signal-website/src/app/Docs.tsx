@@ -1254,6 +1254,216 @@ export default function Docs() {
 
             <SectionDivider />
 
+            <section id="core-concepts" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Core Concepts</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>What is Signal?</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    Signal is an operational intelligence system that helps AI agents make consistent decisions by learning from human judgment.
+                    When your agent encounters a decision it's uncertain about, Signal handles the escalation, captures the human decision,
+                    and automatically creates rules so future similar situations are handled automatically.
+                  </p>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>How It Works</h3>
+                  <ol style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li><strong>Agent Escalates:</strong> Your agent calls signalops.escalate() with a question and context</li>
+                    <li><strong>Signal Checks Rules:</strong> If a matching rule exists, Signal returns the decision instantly</li>
+                    <li><strong>Human Review (if needed):</strong> If no rule matches, Signal sends the decision to Slack for human review</li>
+                    <li><strong>Rule Creation:</strong> After human approval, Signal creates a rule so future similar cases are auto-resolved</li>
+                    <li><strong>Continuous Learning:</strong> Your agents get smarter over time as more rules are created</li>
+                  </ol>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Key Features</h3>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li><strong>Instant Decisions:</strong> Rules are checked in milliseconds for auto-resolved cases</li>
+                    <li><strong>Slack Integration:</strong> Human reviewers get notified in Slack with full context</li>
+                    <li><strong>Dashboard:</strong> View all escalations, rules, and metrics in a web dashboard</li>
+                    <li><strong>Rule Management:</strong> Edit, approve, or discard proposed rules before they go live</li>
+                    <li><strong>Analytics:</strong> Track auto-resolution rates, response times, and decision trends</li>
+                  </ul>
+                </div>
+              </Reveal>
+            </section>
+
+            <SectionDivider />
+
+            <section id="examples" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>More Examples</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Content Moderation</h3>
+                  <CodeBlock language="python" code={'async def moderate_user_content(post_id, content, user_history):\n    result = await signalops.escalate(\n        agent_id="content-moderation",\n        question="Should this content be approved?",\n        context=f"""Post ID: {post_id}\nContent: {content}\nUser has {user_history["violations"]} prior violations\nUser tier: {user_history["tier"]}""",\n        metadata={"post_id": post_id, "user_id": user_history["id"]}\n    )\n    \n    if result.decision == "approve":\n        publish_post(post_id)\n    else:\n        reject_post(post_id)\n    \n    return result.decision'} />
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Financial Approvals</h3>
+                  <CodeBlock language="python" code={'async def approve_expense(expense_id, amount, category, employee_level):\n    result = await signalops.escalate(\n        agent_id="expense-approvals",\n        question="Should this expense be approved?",\n        context=f"""Expense ID: {expense_id}\nAmount: ${amount}\nCategory: {category}\nEmployee Level: {employee_level}""",\n        action="approve_expense",\n        timeout_seconds=1800  # 30 minutes\n    )\n    \n    if result.auto_resolved:\n        print(f"Auto-approved by rule {result.rule_id}")\n    \n    return result.decision == "approve"'} />
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Customer Support Routing</h3>
+                  <CodeBlock language="python" code={'async def route_support_ticket(ticket_id, issue_type, customer_value):\n    result = await signalops.escalate(\n        agent_id="support-routing",\n        question="Should this ticket be escalated to senior support?",\n        context=f"""Ticket: {ticket_id}\nIssue: {issue_type}\nCustomer LTV: ${customer_value}\nPriority: {"high" if customer_value > 10000 else "normal"}"""\n    )\n    \n    if result.decision == "approve":\n        assign_to_senior_team(ticket_id)\n    else:\n        assign_to_standard_team(ticket_id)\n    \n    return result'} />
+                </div>
+              </Reveal>
+            </section>
+
+            <SectionDivider />
+
+            <section id="dashboard-guide" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Using the Dashboard</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Getting Started</h3>
+                  <ol style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Go to <a href={DASHBOARD_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#0d0d0b", fontWeight: 600 }}>{DASHBOARD_URL}</a></li>
+                    <li>Sign in with your account</li>
+                    <li>Select your organization from the dropdown</li>
+                    <li>You'll see three main sections: Escalations, Rules, and Settings</li>
+                  </ol>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Escalations Page</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    The Escalations page shows all decisions your agents have requested. You can:
+                  </p>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>View pending escalations waiting for human review</li>
+                    <li>See auto-resolved cases handled by existing rules</li>
+                    <li>Filter by agent, status, or time period</li>
+                    <li>Review the full context and metadata for each escalation</li>
+                    <li>Manually approve or reject pending decisions</li>
+                  </ul>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Rules Page</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    The Rules page shows all your active and proposed rules:
+                  </p>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Active rules that are currently handling decisions automatically</li>
+                    <li>Pending rules waiting for your approval</li>
+                    <li>View rule conditions, actions, and exceptions</li>
+                    <li>Edit rule descriptions before approving them</li>
+                    <li>See how many times each rule has been applied</li>
+                    <li>Deactivate or delete rules that are no longer needed</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Organization Settings</h3>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Manage API keys (create, revoke, rotate)</li>
+                    <li>Configure Slack integration for notifications</li>
+                    <li>Set up webhooks for custom integrations</li>
+                    <li>Invite team members to your organization</li>
+                    <li>View usage metrics and billing information</li>
+                  </ul>
+                </div>
+              </Reveal>
+            </section>
+
+            <SectionDivider />
+
+            <section id="best-practices" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Best Practices</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Writing Good Context</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    The quality of your escalations depends on the context you provide. Good context should:
+                  </p>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Include all relevant information needed to make the decision</li>
+                    <li>Be structured consistently (use the same format each time)</li>
+                    <li>Include quantitative data (amounts, counts, percentages)</li>
+                    <li>Mention any relevant history or patterns</li>
+                    <li>Avoid including sensitive information like passwords or tokens</li>
+                  </ul>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Agent IDs</h3>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Use descriptive agent_id names (e.g., "customer-support-refunds" not "agent1")</li>
+                    <li>Keep agent_id consistent for the same type of decisions</li>
+                    <li>Use hyphens to separate words (not underscores or spaces)</li>
+                    <li>Organize by department-function-subdomain if helpful</li>
+                  </ul>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Error Handling</h3>
+                  <CodeBlock language="python" code={'import signalops\nfrom signalops.exceptions import SignalTimeout, SignalError\n\ntry:\n    result = await signalops.escalate(\n        agent_id="my-agent",\n        question="Should I proceed?",\n        context="Important decision context",\n        timeout_seconds=300\n    )\nexcept SignalTimeout:\n    # Handle timeout - decision took too long\n    result = default_safe_action()\nexcept SignalError as e:\n    # Handle other Signal errors\n    logger.error(f"Signal error: {e}")\n    result = fallback_decision()'} />
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Testing</h3>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Use different API keys for development, staging, and production</li>
+                    <li>Test with real-looking data to ensure rules work correctly</li>
+                    <li>Review proposed rules carefully before approving them</li>
+                    <li>Start with small rollouts before applying rules broadly</li>
+                    <li>Monitor auto-resolution rates in the dashboard</li>
+                  </ul>
+                </div>
+              </Reveal>
+            </section>
+
+            <SectionDivider />
+
+            <section id="troubleshooting" style={{ marginBottom: "5rem", scrollMarginTop: "6rem" }}>
+              <Reveal>
+                <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem", color: "#0d0d0b" }}>Troubleshooting</h2>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Escalations Not Appearing in Slack</h3>
+                  <ol style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Verify Slack integration is configured in Organization Settings</li>
+                    <li>Check that the Signal app is installed in your Slack workspace</li>
+                    <li>Ensure the notification channel exists and Signal bot is invited</li>
+                    <li>Look for errors in the dashboard Escalations page</li>
+                  </ol>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Timeout Errors</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
+                    If you're getting timeout errors:
+                  </p>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Increase timeout_seconds parameter (default is 3600 / 1 hour)</li>
+                    <li>Ensure humans are actively reviewing escalations in Slack</li>
+                    <li>Consider implementing a fallback decision for timeout cases</li>
+                    <li>Check if your network connection is stable</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Rules Not Auto-Resolving</h3>
+                  <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    <li>Check that the rule status is "active" in the Rules page</li>
+                    <li>Verify the context matches the rule conditions</li>
+                    <li>Ensure you're using the same agent_id as when the rule was created</li>
+                    <li>Review rule exceptions - they may be excluding your case</li>
+                    <li>Check if context format is consistent with previous escalations</li>
+                  </ul>
+                </div>
+              </Reveal>
+            </section>
+
+            <SectionDivider />
+
             <Reveal>
               <div style={{ padding: "3rem", borderRadius: "0.5rem", background: "#0d0d0b", border: "1px solid rgba(255,255,255,0.06)", textAlign: "center" }}>
                 <h3 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "1rem", color: "#f7f7f5" }}>Want the Complete Guide?</h3>
