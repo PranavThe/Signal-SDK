@@ -186,6 +186,14 @@ class Escalation(Base):
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finalization_reason: Mapped[str | None] = mapped_column(Text)
 
+    # Tags for organization and filtering
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Text),
+        nullable=False,
+        default=list,
+        server_default=text("ARRAY[]::TEXT[]"),
+    )
+
     rule_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("rules.id"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -317,3 +325,53 @@ class ConsolidationSuggestion(Base):
 
     rule_a: Mapped[Rule] = relationship("Rule", foreign_keys=[rule_a_id])
     rule_b: Mapped[Rule] = relationship("Rule", foreign_keys=[rule_b_id])
+
+
+class RuleComment(Base):
+    __tablename__ = "rule_comments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    rule_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("rules.id"), nullable=False)
+    comment_text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_email: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    rule: Mapped[Rule] = relationship("Rule", foreign_keys=[rule_id])
+
+
+class RuleVersion(Base):
+    __tablename__ = "rule_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    rule_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("rules.id"), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    condition_description: Mapped[str] = mapped_column(Text, nullable=False)
+    action_description: Mapped[str] = mapped_column(Text, nullable=False)
+    exceptions_note: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    structured_conditions: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    structured_action: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    changed_by_user_id: Mapped[str | None] = mapped_column(Text)
+    changed_by_email: Mapped[str | None] = mapped_column(Text)
+    change_description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    rule: Mapped[Rule] = relationship("Rule", foreign_keys=[rule_id])

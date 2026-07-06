@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.background_tasks import safe_background_task
 from api.config import settings
 from api.database import AsyncSessionLocal
-from api.models import ConsolidationSuggestion, Escalation, Rule, RuleConflict
+from api.models import ConsolidationSuggestion, Escalation, Rule, RuleConflict, RuleVersion
 from api.services.conflict_service import ConflictService
 from api.services.embedding_service import embed, save_rule_embedding
 from api.services.extraction_service import ExtractionService
@@ -140,6 +140,34 @@ async def _publish_final_escalation_result(escalation: Escalation) -> None:
             "finalized_at": escalation.finalized_at,
         },
     )
+
+
+async def _save_rule_version(session: AsyncSession, rule: Rule, change_description: str | None = None) -> None:
+    """Save a snapshot of the rule's current state before modifying it."""
+    # Get current version count
+    result = await session.execute(
+        select(RuleVersion)
+        .where(RuleVersion.rule_id == rule.id)
+        .order_by(RuleVersion.version_number.desc())
+        .limit(1)
+    )
+    latest_version = result.scalar_one_or_none()
+    next_version_number = (latest_version.version_number + 1) if latest_version else 1
+
+    # Save current state as a version
+    version = RuleVersion(
+        rule_id=rule.id,
+        version_number=next_version_number,
+        condition_description=rule.condition_description,
+        action_description=rule.action_description,
+        exceptions_note=rule.exceptions_note,
+        structured_conditions=rule.structured_conditions,
+        structured_action=rule.structured_action,
+        changed_by_user_id=None,  # Could be enhanced to track Slack user
+        changed_by_email=None,
+        change_description=change_description,
+    )
+    session.add(version)
 
 
 @router.post("/interactions", response_model=None)
@@ -357,6 +385,9 @@ async def process_rule_edit_submission(rule_id: str, edit_text: str) -> None:
             if escalation is None:
                 return
 
+            # Save version before editing
+            await _save_rule_version(session, rule, f"Edited via Slack modal: {edit_text[:100]}")
+
             revised = await ExtractionService().revise_rule(escalation, rule, edit_text)
             rule.condition_description = revised.condition_description
             rule.action_description = revised.action_description
@@ -434,6 +465,9 @@ async def process_slack_message_event(event: dict) -> None:
             # Allow editing rules in any status via threaded message
             if rule is None or rule.status not in {"pending_edit", "pending_approval", "active"}:
                 return
+
+            # Save version before editing
+            await _save_rule_version(session, rule, f"Edited via Slack thread: {edit_text[:100]}")
 
             revised = await ExtractionService().revise_rule(escalation, rule, edit_text)
             rule.condition_description = revised.condition_description

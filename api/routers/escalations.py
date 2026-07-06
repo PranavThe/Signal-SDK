@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +17,7 @@ from api.models import Escalation, PolicyCheckLog, Rule
 from api.rate_limit import limiter
 from api.schemas import EscalationCreate, EscalationCreateResponse, EscalationStateResponse
 from api.services.escalation_pipeline import prepare_escalation_semantics, prepare_escalation_slack_card
-from api.services.redis_service import publish_escalation_created, subscribe_escalation_events
+from api.services.redis_service import publish_escalation_created, publish_escalation_response, subscribe_escalation_events
 from api.services.webhook_service import send_webhook_event_by_org_id
 
 
@@ -175,3 +177,131 @@ async def stream_escalation(
                 break
 
     return EventSourceResponse(event_generator())
+
+
+# New endpoints for product improvements
+
+
+class QuickDecisionRequest(BaseModel):
+    decision: str  # 'approve' or 'reject'
+
+
+class UpdateTagsRequest(BaseModel):
+    tags: list[str]
+
+
+@router.post("/{escalation_id}/quick-decision")
+async def make_quick_decision(
+    escalation_id: UUID,
+    request: QuickDecisionRequest,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_key),
+) -> dict[str, Any]:
+    """Make a quick approve/reject decision on an escalation from the list view."""
+    escalation = await _get_org_escalation(session, escalation_id, auth.org_id)
+
+    if escalation.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Escalation has already been responded to",
+        )
+
+    if request.decision not in ["approve", "reject"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Decision must be 'approve' or 'reject'",
+        )
+
+    # Update escalation
+    escalation.status = "responded"
+    escalation.human_decision = request.decision
+    escalation.auto_resolved = False
+    escalation.responded_at = datetime.now(UTC)
+    escalation.finalized_at = datetime.now(UTC)
+    escalation.finalization_reason = "quick_decision"
+    escalation.apply_broadly = False
+
+    await session.commit()
+
+    # Publish result
+    await publish_escalation_response(escalation)
+    await send_webhook_event_by_org_id(
+        auth.org_id,
+        "escalation.resolved",
+        {
+            "id": str(escalation.id),
+            "org_id": str(auth.org_id),
+            "agent_id": escalation.agent_id,
+            "status": escalation.status,
+            "human_decision": escalation.human_decision,
+            "auto_resolved": escalation.auto_resolved,
+            "finalized": True,
+            "finalization_reason": escalation.finalization_reason,
+            "responded_at": escalation.responded_at,
+            "finalized_at": escalation.finalized_at,
+        },
+    )
+
+    return {
+        "escalation_id": str(escalation.id),
+        "status": escalation.status,
+        "human_decision": escalation.human_decision,
+        "finalized": True,
+    }
+
+
+@router.patch("/{escalation_id}/tags")
+async def update_escalation_tags(
+    escalation_id: UUID,
+    request: UpdateTagsRequest,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_key),
+) -> dict[str, Any]:
+    """Update tags for an escalation."""
+    escalation = await _get_org_escalation(session, escalation_id, auth.org_id)
+
+    escalation.tags = request.tags
+    await session.commit()
+
+    return {
+        "escalation_id": str(escalation.id),
+        "tags": escalation.tags,
+    }
+
+
+@router.get("/sla/overdue")
+async def get_overdue_escalations(
+    hours_threshold: int = 24,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_key),
+) -> dict[str, Any]:
+    """Get escalations that are overdue based on SLA threshold."""
+    threshold_time = datetime.now(UTC) - timedelta(hours=hours_threshold)
+
+    result = await session.execute(
+        select(Escalation)
+        .where(
+            Escalation.org_id == auth.org_id,
+            Escalation.status == "pending",
+            Escalation.created_at < threshold_time,
+        )
+        .order_by(Escalation.created_at.asc())
+    )
+    overdue_escalations = result.scalars().all()
+
+    return {
+        "overdue_escalations": [
+            {
+                "escalation_id": str(e.id),
+                "agent_id": e.agent_id,
+                "question": e.question,
+                "context_preview": e.context[:100] + "..." if len(e.context) > 100 else e.context,
+                "created_at": e.created_at.isoformat(),
+                "hours_overdue": int((datetime.now(UTC) - e.created_at).total_seconds() / 3600),
+                "tags": e.tags,
+            }
+            for e in overdue_escalations
+        ],
+        "count": len(overdue_escalations),
+        "threshold_hours": hours_threshold,
+    }
