@@ -43,6 +43,7 @@ from api.models import (
     ConsolidationSuggestion,
     DashboardOrgMembership,
     Escalation,
+    Feedback,
     Organization,
     PolicyCheckLog,
     Rule,
@@ -114,6 +115,12 @@ class OrganizationSetupRequest(BaseModel):
 
 class BillingCheckoutRequest(BaseModel):
     tier: Literal["pro", "scale"] = "pro"
+
+
+class FeedbackSubmitRequest(BaseModel):
+    feedback_text: str = Field(min_length=1, max_length=5000)
+    category: Literal["bug", "feature", "general", "billing"] = "general"
+    page_url: str | None = None
 
 
 def _app_tz() -> ZoneInfo:
@@ -1805,3 +1812,46 @@ async def get_check_logs(
         )
     ).scalars().all()
     return {"items": [_check_log_payload(log) for log in logs]}
+
+
+@router.post("/admin/feedback")
+async def submit_feedback(
+    request: FeedbackSubmitRequest,
+    http_request: Request,
+    session: AsyncSession = Depends(get_session),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> dict[str, Any]:
+    """Submit user feedback from the dashboard."""
+    # Get current org context if available
+    org_context = await get_dashboard_org_from_request(http_request, session, dashboard_user)
+    org_id = org_context.org_id if org_context else None
+
+    # Get account ID if available
+    account_id = None
+    if dashboard_user:
+        account = await _get_account_for_user(session, dashboard_user)
+        if account:
+            account_id = account.id
+
+    # Get user agent from request headers
+    user_agent = http_request.headers.get("user-agent")
+
+    # Create feedback record
+    feedback = Feedback(
+        user_id=dashboard_user.user_id,
+        email=dashboard_user.email,
+        feedback_text=request.feedback_text,
+        category=request.category,
+        org_id=org_id,
+        account_id=account_id,
+        page_url=request.page_url,
+        user_agent=user_agent,
+    )
+
+    session.add(feedback)
+    await session.commit()
+
+    return {
+        "message": "Feedback submitted successfully. Thank you for helping us improve Signal!",
+        "feedback_id": str(feedback.id),
+    }
