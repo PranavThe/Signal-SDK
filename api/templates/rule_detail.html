@@ -4,17 +4,31 @@
 
 {% block content %}
 <div x-data='ruleDetail({{ detail|tojson }})' x-init="init()" class="space-y-6">
-<header class="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+<header class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
   <div>
     <a href="/dashboard/rules" class="text-sm font-medium text-stone-500 hover:text-stone-950">Rules</a>
     <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Rule detail</h1>
   </div>
-  <p class="text-sm text-stone-500">Live</p>
+  <div class="flex items-center gap-2">
+    <button @click="showEditModal = true" class="rounded border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-950 hover:bg-stone-50">Edit Rule</button>
+    <button @click="showTestModal = true" class="rounded border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-950 hover:bg-stone-50">Test Rule</button>
+  </div>
 </header>
 
 <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
 
-<section class="grid gap-10 xl:grid-cols-[minmax(0,1fr)_360px]">
+<!-- Tabs -->
+<div class="border-b border-stone-200">
+  <nav class="-mb-px flex space-x-8">
+    <button @click="activeTab = 'details'" :class="activeTab === 'details' ? 'border-stone-950 text-stone-950' : 'border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700'" class="whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium">Details</button>
+    <button @click="activeTab = 'analytics'" :class="activeTab === 'analytics' ? 'border-stone-950 text-stone-950' : 'border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700'" class="whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium">Analytics</button>
+    <button @click="activeTab = 'versions'" :class="activeTab === 'versions' ? 'border-stone-950 text-stone-950' : 'border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700'" class="whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium">Version History</button>
+    <button @click="activeTab = 'comments'" :class="activeTab === 'comments' ? 'border-stone-950 text-stone-950' : 'border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700'" class="whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium">Comments</button>
+  </nav>
+</div>
+
+<!-- Details Tab -->
+<section x-show="activeTab === 'details'" class="grid gap-10 xl:grid-cols-[minmax(0,1fr)_360px]">
   <div class="space-y-10">
     <div class="border-t border-stone-200 pt-5">
       <div class="mb-4 flex flex-wrap items-center gap-2">
@@ -76,6 +90,128 @@
     </div>
   </aside>
 </section>
+
+<!-- Analytics Tab -->
+<section x-show="activeTab === 'analytics'" class="space-y-6">
+  <div class="grid gap-6 sm:grid-cols-3">
+    <div class="rounded-lg border border-stone-200 p-6">
+      <p class="text-sm font-medium text-stone-500">Total Triggers</p>
+      <p class="mt-2 text-3xl font-semibold" x-text="analytics.trigger_count || 0"></p>
+    </div>
+    <div class="rounded-lg border border-stone-200 p-6">
+      <p class="text-sm font-medium text-stone-500">Last 7 Days</p>
+      <p class="mt-2 text-3xl font-semibold" x-text="analytics.triggers_last_7_days || 0"></p>
+    </div>
+    <div class="rounded-lg border border-stone-200 p-6">
+      <p class="text-sm font-medium text-stone-500">Last 30 Days</p>
+      <p class="mt-2 text-3xl font-semibold" x-text="analytics.triggers_last_30_days || 0"></p>
+    </div>
+  </div>
+  <div class="rounded-lg border border-stone-200 p-6">
+    <h3 class="font-semibold">Usage Statistics</h3>
+    <dl class="mt-4 grid gap-4 sm:grid-cols-2">
+      <div>
+        <dt class="text-sm text-stone-500">Days Since Last Trigger</dt>
+        <dd class="mt-1 font-medium" x-text="analytics.days_since_last_trigger !== null ? analytics.days_since_last_trigger : 'Never'"></dd>
+      </div>
+      <div>
+        <dt class="text-sm text-stone-500">Last Triggered At</dt>
+        <dd class="mt-1 font-medium" x-text="analytics.last_triggered_at || 'Never'"></dd>
+      </div>
+    </dl>
+  </div>
+</section>
+
+<!-- Version History Tab -->
+<section x-show="activeTab === 'versions'" class="space-y-4">
+  <template x-for="version in versions" :key="version.version_number">
+    <div class="rounded-lg border border-stone-200 p-6">
+      <div class="flex items-start justify-between">
+        <div>
+          <p class="font-semibold">Version <span x-text="version.version_number"></span></p>
+          <p class="mt-1 text-sm text-stone-500" x-text="version.created_at"></p>
+          <p class="mt-1 text-sm text-stone-600" x-text="version.change_description || 'No description'"></p>
+        </div>
+      </div>
+      <div class="mt-4 space-y-3">
+        <div>
+          <p class="text-xs font-semibold uppercase text-stone-500">Condition</p>
+          <p class="mt-1 text-sm" x-text="version.condition_description"></p>
+        </div>
+        <div>
+          <p class="text-xs font-semibold uppercase text-stone-500">Action</p>
+          <p class="mt-1 text-sm" x-text="version.action_description"></p>
+        </div>
+      </div>
+    </div>
+  </template>
+  <p x-show="versions.length === 0" x-cloak class="py-6 text-center text-sm text-stone-500">No version history available.</p>
+</section>
+
+<!-- Comments Tab -->
+<section x-show="activeTab === 'comments'" class="space-y-6">
+  <div class="rounded-lg border border-stone-200 p-6">
+    <h3 class="font-semibold">Add Comment</h3>
+    <textarea x-model="newComment" rows="3" class="mt-3 w-full rounded border border-stone-300 px-3 py-2 text-sm" placeholder="Add a note about this rule..."></textarea>
+    <button @click="addComment()" :disabled="!newComment.trim()" class="mt-3 rounded bg-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-50">Post Comment</button>
+  </div>
+  <div class="space-y-4">
+    <template x-for="comment in comments" :key="comment.id">
+      <div class="rounded-lg border border-stone-200 p-6">
+        <div class="flex items-start justify-between">
+          <div>
+            <p class="font-medium" x-text="comment.created_by_email"></p>
+            <p class="text-sm text-stone-500" x-text="comment.created_at"></p>
+          </div>
+        </div>
+        <p class="mt-3 text-sm" x-text="comment.comment_text"></p>
+      </div>
+    </template>
+    <p x-show="comments.length === 0" x-cloak class="py-6 text-center text-sm text-stone-500">No comments yet.</p>
+  </div>
+</section>
+
+<!-- Edit Modal -->
+<div x-show="showEditModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto" style="display: none;">
+  <div class="flex min-h-screen items-end justify-center px-4 pb-20 pt-4 text-center sm:block sm:p-0">
+    <div x-show="showEditModal" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-stone-500 bg-opacity-75 transition-opacity" @click="showEditModal = false"></div>
+    <span class="hidden sm:inline-block sm:h-screen sm:align-middle">&#8203;</span>
+    <div x-show="showEditModal" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="inline-block transform overflow-hidden rounded-lg bg-white text-left align-bottom shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:align-middle">
+      <div class="bg-white px-4 pb-4 pt-5 sm:p-6">
+        <h3 class="text-lg font-semibold">Edit Rule</h3>
+        <p class="mt-2 text-sm text-stone-600">Provide instructions for how to modify this rule. The rule will be sent for re-approval.</p>
+        <textarea x-model="editText" rows="4" class="mt-4 w-full rounded border border-stone-300 px-3 py-2 text-sm" placeholder="e.g., Change the threshold to 100 files instead of 50"></textarea>
+      </div>
+      <div class="bg-stone-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+        <button @click="submitEdit()" type="button" class="inline-flex w-full justify-center rounded bg-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 sm:ml-3 sm:w-auto">Submit Edit</button>
+        <button @click="showEditModal = false" type="button" class="mt-3 inline-flex w-full justify-center rounded border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 sm:mt-0 sm:w-auto">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Test Modal -->
+<div x-show="showTestModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto" style="display: none;">
+  <div class="flex min-h-screen items-end justify-center px-4 pb-20 pt-4 text-center sm:block sm:p-0">
+    <div x-show="showTestModal" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-stone-500 bg-opacity-75 transition-opacity" @click="showTestModal = false"></div>
+    <span class="hidden sm:inline-block sm:h-screen sm:align-middle">&#8203;</span>
+    <div x-show="showTestModal" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="inline-block transform overflow-hidden rounded-lg bg-white text-left align-bottom shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-2xl sm:align-middle">
+      <div class="bg-white px-4 pb-4 pt-5 sm:p-6">
+        <h3 class="text-lg font-semibold">Test Rule</h3>
+        <p class="mt-2 text-sm text-stone-600">Test this rule against sample context to see if it matches.</p>
+        <textarea x-model="testContext" rows="8" class="mt-4 w-full rounded border border-stone-300 px-3 py-2 font-mono text-sm" placeholder='{"deployment_id": "deploy-123", "author": {"email": "alice@company.com"}}'></textarea>
+        <div x-show="testResult" x-cloak class="mt-4 rounded-lg border p-4" :class="testResult?.matched ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
+          <p class="font-semibold" x-text="testResult?.matched ? 'Rule Matched ✓' : 'Rule Did Not Match'"></p>
+          <p class="mt-2 text-sm" x-text="testResult?.reasoning"></p>
+        </div>
+      </div>
+      <div class="bg-stone-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+        <button @click="testRule()" type="button" class="inline-flex w-full justify-center rounded bg-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 sm:ml-3 sm:w-auto">Run Test</button>
+        <button @click="showTestModal = false; testResult = null" type="button" class="mt-3 inline-flex w-full justify-center rounded border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 sm:mt-0 sm:w-auto">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
 </div>
 
 <script>
@@ -84,6 +220,16 @@
       detail: initialDetail || {},
       message: "",
       refreshInterval: null,
+      activeTab: "details",
+      analytics: {},
+      versions: [],
+      comments: [],
+      newComment: "",
+      showEditModal: false,
+      showTestModal: false,
+      editText: "",
+      testContext: "",
+      testResult: null,
       get rule() {
         return this.detail.rule || {
           id: "",
@@ -108,7 +254,10 @@
       },
       init() {
         this.load(false);
-        this.refreshInterval = setInterval(() => this.load(false), 5000);
+        this.loadAnalytics();
+        this.loadVersions();
+        this.loadComments();
+        this.refreshInterval = setInterval(() => this.load(false), 10000);
         window.addEventListener("beforeunload", () => {
           if (this.refreshInterval) clearInterval(this.refreshInterval);
         });
@@ -138,6 +287,83 @@
           return;
         }
         this.detail = await response.json();
+      },
+      async loadAnalytics() {
+        if (!this.rule.id) return;
+        const response = await fetch(`/v1/rules/${this.rule.id}/analytics`, { credentials: "include" });
+        if (response.ok) {
+          this.analytics = await response.json();
+        }
+      },
+      async loadVersions() {
+        if (!this.rule.id) return;
+        const response = await fetch(`/v1/rules/${this.rule.id}/versions`, { credentials: "include" });
+        if (response.ok) {
+          const data = await response.json();
+          this.versions = data.versions || [];
+        }
+      },
+      async loadComments() {
+        if (!this.rule.id) return;
+        const response = await fetch(`/v1/rules/${this.rule.id}/comments`, { credentials: "include" });
+        if (response.ok) {
+          const data = await response.json();
+          this.comments = data.comments || [];
+        }
+      },
+      async addComment() {
+        if (!this.newComment.trim()) return;
+        const response = await fetch(`/v1/rules/${this.rule.id}/comments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ comment_text: this.newComment }),
+        });
+        if (response.ok) {
+          this.newComment = "";
+          await this.loadComments();
+          this.message = "Comment added successfully.";
+        } else {
+          this.message = await this.failureMessage(response, "Failed to add comment.");
+        }
+      },
+      async submitEdit() {
+        if (!this.editText.trim()) return;
+        const response = await fetch(`/admin/review/rules/${this.rule.id}/edit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ edit_text: this.editText }),
+        });
+        if (response.ok) {
+          this.showEditModal = false;
+          this.editText = "";
+          this.message = "Rule edit submitted for approval.";
+          await this.load(true);
+          await this.loadVersions();
+        } else {
+          this.message = await this.failureMessage(response, "Failed to submit edit.");
+        }
+      },
+      async testRule() {
+        let context;
+        try {
+          context = JSON.parse(this.testContext);
+        } catch (e) {
+          this.message = "Invalid JSON in test context.";
+          return;
+        }
+        const response = await fetch(`/v1/rules/${this.rule.id}/test`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ test_context: context }),
+        });
+        if (response.ok) {
+          this.testResult = await response.json();
+        } else {
+          this.message = await this.failureMessage(response, "Failed to test rule.");
+        }
       },
     };
   }
