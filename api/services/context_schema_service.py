@@ -603,26 +603,99 @@ class ContextSchemaService:
         source: str = "rule",
     ) -> tuple[list[dict[str, Any]], list[str]]:
         aliases = await self.alias_map(session, org_id)
+
+        # Load learned field types for schema enforcement on condition values
+        fields = (
+            await session.execute(select(ContextField).where(ContextField.org_id == org_id))
+        ).scalars().all()
+        field_types = {field.canonical_name: field.field_type for field in fields}
+
+        logger.info(f"[CANONICALIZE_CONDITIONS] Loaded {len(field_types)} field types for rule condition normalization")
+
         canonical_conditions: list[dict[str, Any]] = []
         warnings: list[str] = []
         field_values: dict[str, Any] = {}
         raw_values: dict[str, Any] = {}
+
         for condition in conditions or []:
             updated = dict(condition)
             raw_field = str(updated.get("field") or "")
+            raw_value = updated.get("value")
             normalized_field = canonicalize_scalar_field(raw_field)
             canonical_field = aliases.get(normalized_field, normalized_field)
+
             if canonical_field and canonical_field != raw_field:
                 warnings.append(f"Stored rule field '{raw_field}' as canonical field '{canonical_field}'.")
+
+            # Normalize condition value to match learned schema type
+            expected_type = field_types.get(canonical_field)
+            if expected_type:
+                coerced_value = _coerce_to_schema_type(raw_value, expected_type, canonical_field)
+                if coerced_value != raw_value:
+                    logger.warning(f"[CANONICALIZE_CONDITIONS] Coerced rule condition value for '{canonical_field}': {raw_value} → {coerced_value} (expected type: {expected_type})")
+                    updated["value"] = coerced_value
+                else:
+                    logger.debug(f"[CANONICALIZE_CONDITIONS] Condition value for '{canonical_field}' already matches expected type {expected_type}")
+            else:
+                logger.debug(f"[CANONICALIZE_CONDITIONS] No learned type for '{canonical_field}', keeping value as-is")
+
             updated["field"] = canonical_field
             canonical_conditions.append(updated)
+
             if canonical_field:
+                # Use the coerced value for learning
                 field_values[canonical_field] = updated.get("value")
-                raw_values[raw_field] = updated.get("value")
+                raw_values[raw_field] = raw_value
 
         if learn and field_values:
             await self.learn_fields(session, org_id, field_values, raw_values, source=source)
+
         return canonical_conditions, warnings
+
+    async def normalize_rule_for_matching(
+        self,
+        session: AsyncSession,
+        org_id: UUID,
+        rule: Rule,
+    ) -> Rule:
+        """Normalize a rule's condition values to match current schema types.
+
+        This ensures that rule conditions use the same types as incoming contexts,
+        preventing type mismatches that cause rules to fail matching.
+
+        For example, if 'cwes' is learned as type 'array', this converts:
+        - Rule condition value "CWE-20" (string) → ["CWE-20"] (array)
+        - So it matches context value ["CWE-20"] (also array)
+        """
+        if not rule.structured_conditions:
+            return rule
+
+        # Load learned field types
+        fields = (
+            await session.execute(select(ContextField).where(ContextField.org_id == org_id))
+        ).scalars().all()
+        field_types = {field.canonical_name: field.field_type for field in fields}
+
+        # Normalize each condition's value
+        normalized_conditions = []
+        for condition in rule.structured_conditions:
+            updated = dict(condition)
+            field = str(updated.get("field", ""))
+            raw_value = updated.get("value")
+            expected_type = field_types.get(field)
+
+            if expected_type and raw_value is not None:
+                coerced_value = _coerce_to_schema_type(raw_value, expected_type, field)
+                if coerced_value != raw_value:
+                    logger.debug(f"[NORMALIZE_RULE] Rule {rule.id}: coerced condition '{field}' value {raw_value} → {coerced_value} (type: {expected_type})")
+                    updated["value"] = coerced_value
+
+            normalized_conditions.append(updated)
+
+        # Create a copy of the rule with normalized conditions
+        # (we don't modify the original database object)
+        rule.structured_conditions = normalized_conditions
+        return rule
 
     async def schema_payload(self, session: AsyncSession, org_id: UUID) -> dict[str, Any]:
         fields = (

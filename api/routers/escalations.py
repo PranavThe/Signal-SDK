@@ -116,8 +116,16 @@ async def create_escalation(
         )
     ).scalars().all()
 
+    # Normalize rule condition values to match current schema types
+    # This prevents type mismatches (e.g., string vs array) that cause rules to fail matching
+    schema_service = ContextSchemaService()
+    normalized_rules = []
+    for rule in rules:
+        normalized_rule = await schema_service.normalize_rule_for_matching(session, auth.org_id, rule)
+        normalized_rules.append(normalized_rule)
+
     exact_candidates = most_specific_rules(
-        matching_rules_for_context(list(rules), context_result.normalized, payload.agent_id)
+        matching_rules_for_context(normalized_rules, context_result.normalized, payload.agent_id)
     )
     has_rule_conflict = conflicting_actions(exact_candidates)
     matched_rule = None
