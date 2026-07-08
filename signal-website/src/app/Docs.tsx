@@ -345,14 +345,15 @@ async def quick_check_refund(customer_tier: str, amount: float):
         agent_id="customer-support-refunds"
     )
 
-    if result.allowed:
-        print(f"Refund allowed by rule {result.rule_id}")
+    # result.result can be: "proceed", "block", "reject", "escalate", etc.
+    if result.result in ("proceed", "approve"):
+        print(f"Refund allowed by rule {result.rule_id}: {result.reasoning}")
         return True
-    elif result.allowed is False:
-        print(f"Refund denied by rule {result.rule_id}")
+    elif result.result in ("block", "reject", "deny"):
+        print(f"Refund denied by rule {result.rule_id}: {result.reasoning}")
         return False
     else:
-        print("No rule found - need to escalate")
+        print(f"No rule found - need to escalate ({result.reasoning})")
         return None
 
 asyncio.run(quick_check_refund("premium", 150.00))
@@ -448,8 +449,11 @@ Check if an action should be allowed based on existing rules **without escalatin
 | \`agent_id\` | str | Yes | Your agent identifier |
 
 **Returns:** \`CheckResult\` object with:
-- \`allowed\` (bool | None): \`True\` if approved, \`False\` if denied, \`None\` if no rule found
-- \`rule_id\` (str | None): ID of the rule that matched
+- \`result\` (str): The decision - "proceed", "block", "reject", "deny", "escalate", "modify", etc.
+- \`rule_id\` (str | None): ID of the rule that matched (None if no rule)
+- \`reasoning\` (str): Explanation of the decision
+- \`modification\` (dict | None): Modification parameters if result is "modify"
+- \`context_warnings\` (list[str]): Validation warnings about your context
 
 **Example:**
 \`\`\`python
@@ -463,12 +467,12 @@ result = await signalops.check(
     agent_id="customer-support-refunds"
 )
 
-if result.allowed is True:
-    print(f"Approved by rule {result.rule_id}")
-elif result.allowed is False:
-    print(f"Denied by rule {result.rule_id}")
+if result.result in ("proceed", "approve"):
+    print(f"Approved by rule {result.rule_id}: {result.reasoning}")
+elif result.result in ("block", "reject", "deny"):
+    print(f"Denied by rule {result.rule_id}: {result.reasoning}")
 else:
-    print("No rule found - would need to escalate")
+    print(f"No rule found - {result.reasoning}")
 \`\`\`
 
 **When to use check():**
@@ -503,30 +507,31 @@ except TimeoutError:
     proceed = False  # Default to denying risky actions
 \`\`\`
 
-### Pattern 2: Combine check() and escalate()
+### Pattern 2: check() for No-Escalation Flows
 
-Check for a rule first, then escalate if needed:
+Use check() when you want rule-based decisions but don't want to escalate to humans:
 
 \`\`\`python
-# First try to check existing rules (fast)
+# Check existing rules without creating an escalation
 check_result = await signalops.check(
     action="approve_transaction",
     context={"amount": 1000, "risk_score": 0.2},
     agent_id="transactions"
 )
 
-if check_result.allowed is not None:
-    # Rule found - use it
-    proceed = check_result.allowed
+if check_result.result in ("proceed", "approve"):
+    # Rule says approve
+    proceed = True
+elif check_result.result in ("block", "reject", "deny"):
+    # Rule says deny
+    proceed = False
 else:
-    # No rule - escalate to human
-    escalation_result = await signalops.escalate(
-        agent_id="transactions",
-        question="Should I approve this transaction?",
-        context="Amount: $1000\\nRisk Score: 0.2",
-        action="approve_transaction"
-    )
-    proceed = escalation_result.decision == "approve"
+    # No rule exists - use a safe default (don't escalate)
+    proceed = False  # Conservative default
+    print(f"No rule found, using default: {check_result.reasoning}")
+\`\`\`
+
+**Note:** escalate() automatically checks rules first and returns immediately if a match is found. You don't need to check() before escalate() - only use check() if you want to avoid creating an escalation entirely.
 \`\`\`
 
 ### Pattern 3: Structured Context for Better Rules
