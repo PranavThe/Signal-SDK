@@ -130,6 +130,44 @@
         window.dispatchEvent(new CustomEvent("signal-toast", { detail: { message, type } }));
       };
 
+      (function installSignalSessionGuard() {
+        if (window.__signalFetchGuardInstalled) return;
+        window.__signalFetchGuardInstalled = true;
+        const nativeFetch = window.fetch.bind(window);
+        window.signalNativeFetch = nativeFetch;
+
+        window.signalHandleExpiredSession = function(message = "Your session expired. Sign in again to continue.") {
+          if (window.__signalSessionExpired) return;
+          window.__signalSessionExpired = true;
+          try {
+            sessionStorage.removeItem("signal_org_name");
+          } catch {}
+          try {
+            window.signalToast(message, "error");
+          } catch {}
+          nativeFetch("/dashboard/logout", { method: "POST", credentials: "include" }).catch(() => {});
+          setTimeout(() => {
+            window.location.href = "/login?session_expired=1";
+          }, 700);
+        };
+
+        window.fetch = async function(input, init) {
+          const response = await nativeFetch(input, init);
+          const url = typeof input === "string" ? input : (input && input.url) || "";
+          const isDashboardCall = url.startsWith("/admin") || url.startsWith("/dashboard/org-session");
+          if (isDashboardCall && response.status === 401) {
+            response.clone().json()
+              .then((data) => {
+                if (data?.code === "session_expired") {
+                  window.signalHandleExpiredSession(data.detail);
+                }
+              })
+              .catch(() => {});
+          }
+          return response;
+        };
+      })();
+
       function toastCenter() {
         return {
           toasts: [],

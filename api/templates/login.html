@@ -77,6 +77,17 @@
               window.history.replaceState({}, document.title, "/login");
             }
 
+            if (params.get("session_expired") === "1") {
+              try {
+                await this.client.auth.signOut({ scope: "local" });
+              } finally {
+                this.clearStoredSupabaseSessions(config.supabase_url);
+              }
+              window.history.replaceState({}, document.title, "/login");
+              this.message = "Your session expired. Sign in again to continue.";
+              return;
+            }
+
             if (params.get("signed_out") === "1") {
               try {
                 await this.client.auth.signOut({ scope: "local" });

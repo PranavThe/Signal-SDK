@@ -26,6 +26,7 @@ from api.dashboard_auth import (
     DASHBOARD_ORG_ID_COOKIE,
     DashboardOrgContext,
     DashboardUser,
+    clear_dashboard_cookies,
     dashboard_auth_configured,
     ensure_dashboard_account,
     ensure_dashboard_membership,
@@ -188,7 +189,10 @@ async def _dashboard_template_context(
 ) -> dict[str, Any] | RedirectResponse:
     user = await get_dashboard_user_from_request(request)
     if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+        login_url = "/login?session_expired=1" if request.cookies.get(DASHBOARD_ACCESS_COOKIE) else "/login"
+        response = RedirectResponse(url=login_url, status_code=status.HTTP_303_SEE_OTHER)
+        clear_dashboard_cookies(response)
+        return response
     current_org = await get_dashboard_org_from_request(request, session, user)
     return {
         "dashboard_user": user,
@@ -1083,9 +1087,7 @@ async def create_dashboard_session(
 
 @router.post("/dashboard/logout")
 async def logout_dashboard(response: Response) -> dict[str, bool]:
-    response.delete_cookie(DASHBOARD_ACCESS_COOKIE)
-    response.delete_cookie(DASHBOARD_API_KEY_HASH_COOKIE)
-    response.delete_cookie(DASHBOARD_ORG_ID_COOKIE)
+    clear_dashboard_cookies(response)
     return {"ok": True}
 
 

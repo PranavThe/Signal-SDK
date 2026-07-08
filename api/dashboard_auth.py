@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import httpx
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +17,12 @@ from api.models import Account, ApiKey, DashboardAccountMembership, DashboardOrg
 DASHBOARD_ACCESS_COOKIE = "signal_dashboard_access_token"
 DASHBOARD_API_KEY_HASH_COOKIE = "signal_dashboard_api_key_hash"
 DASHBOARD_ORG_ID_COOKIE = "signal_dashboard_org_id"
+
+
+def clear_dashboard_cookies(response: Response) -> None:
+    response.delete_cookie(DASHBOARD_ACCESS_COOKIE)
+    response.delete_cookie(DASHBOARD_API_KEY_HASH_COOKIE)
+    response.delete_cookie(DASHBOARD_ORG_ID_COOKIE)
 
 
 @dataclass(frozen=True)
