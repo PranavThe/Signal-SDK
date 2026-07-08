@@ -369,6 +369,8 @@ Configure Signal globally. Call this once at the start of your application.
 **Parameters:**
 - \`api_key\` (str, required): Your Signal API key starting with \`sk_live_\`
 - \`base_url\` (str, optional): Signal API URL. Default: \`https://signal-omega-tan.vercel.app\`
+- \`dev_mode\` (bool, optional): Enable debug logging for development (default: False)
+- \`auto_enrich\` (bool, optional): Automatically add timestamp and environment to context (default: True)
 
 **Example:**
 \`\`\`python
@@ -376,7 +378,9 @@ import signalops
 
 signalops.configure(
     api_key="sk_live_your_api_key_here",
-    base_url="https://signal-omega-tan.vercel.app"  # Optional
+    base_url="https://signal-omega-tan.vercel.app",  # Optional
+    dev_mode=False,  # Optional: Enable debug logging
+    auto_enrich=True  # Optional: Auto-add environment metadata (default: True)
 )
 \`\`\`
 
@@ -1224,13 +1228,17 @@ Configure Signal globally. Call this once at the start of your application.
 \`\`\`python
 signalops.configure(
     api_key="sk_live_your_api_key_here",
-    base_url="https://signal-omega-tan.vercel.app"  # Optional
+    base_url="https://signal-omega-tan.vercel.app",  # Optional
+    dev_mode=False,  # Optional: Enable debug logging
+    auto_enrich=True  # Optional: Auto-add environment metadata (default: True)
 )
 \`\`\`
 
 **Parameters:**
 - \`api_key\` (str, required): Your Signal API key
 - \`base_url\` (str, optional): Custom API endpoint URL
+- \`dev_mode\` (bool, optional): Enable debug logging for development (default: False)
+- \`auto_enrich\` (bool, optional): Automatically add timestamp and environment to context (default: True)
 
 ### signalops.escalate()
 
@@ -1924,12 +1932,14 @@ Visit ${DASHBOARD_URL} for more information.
                 <div style={{ marginBottom: "3rem" }}>
                   <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.configure()</h3>
                   <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Configure Signal globally. Call this once at the start of your application.</p>
-                  <CodeBlock language="python" code={'signalops.configure(\n    api_key="sk_live_your_api_key_here",\n    base_url="https://signal-omega-tan.vercel.app"  # Optional\n)'} />
+                  <CodeBlock language="python" code={'signalops.configure(\n    api_key="sk_live_your_api_key_here",\n    base_url="https://signal-omega-tan.vercel.app",  # Optional\n    dev_mode=False,  # Optional: Enable debug logging\n    auto_enrich=True  # Optional: Auto-add environment metadata (default: True)\n)'} />
                   <div style={{ marginTop: "1.5rem" }}>
                     <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem", color: "#0d0d0b" }}>Parameters:</h4>
                     <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
                       <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>api_key</code> (str, required): Your Signal API key</li>
                       <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>base_url</code> (str, optional): Custom API endpoint URL</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>dev_mode</code> (bool, optional): Enable debug logging for development (default: False)</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>auto_enrich</code> (bool, optional): Automatically add timestamp and environment to context (default: True)</li>
                     </ul>
                   </div>
                 </div>
