@@ -61,6 +61,43 @@ const personScalarFields = new Set([
   "user",
 ]);
 
+const builtinContextAliasesRaw: Record<string, string> = {
+  "allowed pairs": "route.pair.cap",
+  allowed_pairs: "route.pair.cap",
+  "departure date": "departure.date",
+  departure_date: "departure.date",
+  "destination airport": "destination.airports",
+  "destination airports": "destination.airports",
+  destinations: "destination.airports",
+  "non stop": "nonstop.only",
+  "non-stop": "nonstop.only",
+  non_stop: "nonstop.only",
+  nonstop: "nonstop.only",
+  "nonstop only": "nonstop.only",
+  nonstop_only: "nonstop.only",
+  "operational risk": "operational.risk",
+  "origin airport": "origin.airports",
+  "origin airports": "origin.airports",
+  origins: "origin.airports",
+  "provider limitation": "provider.limitation",
+  "provider limitations": "provider.limitation",
+  "requested pairs": "requested.route.pairs",
+  "requested route pairs": "requested.route.pairs",
+  requested_pairs: "requested.route.pairs",
+  "return date": "return.date",
+  return_date: "return.date",
+  "route pair cap": "route.pair.cap",
+  "route-pair cap": "route.pair.cap",
+  route_pair_cap: "route.pair.cap",
+  "route pairs requested": "requested.route.pairs",
+  "routes requested per pair": "routes.requested.per.pair",
+  "routes requested per route pair": "routes.requested.per.pair",
+  routes_requested_per_pair: "routes.requested.per.pair",
+  "sensitive data": "sensitive.data.included",
+  "sensitive data included": "sensitive.data.included",
+  "trip type": "trip.type",
+};
+
 export function canonicalizeFieldName(field: string): string {
   return String(field ?? "")
     .trim()
@@ -77,12 +114,45 @@ function canonicalizeScalarField(field: string): string {
   return canonical;
 }
 
+function generatedAliasesForField(canonicalName: string): Set<string> {
+  const aliases = new Set<string>([
+    canonicalName,
+    canonicalName.replaceAll(".", "_"),
+    canonicalName.replaceAll(".", "-"),
+  ]);
+  const parts = canonicalName.split(".");
+  if (parts.length > 1) {
+    const camelTail = parts
+      .slice(1)
+      .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
+      .join("");
+    aliases.add(`${parts[0]}${camelTail}`);
+  }
+  return aliases;
+}
+
+export function builtinContextAliases(): Record<string, string> {
+  const aliases: Record<string, string> = {};
+  for (const [rawAlias, rawCanonical] of Object.entries(builtinContextAliasesRaw)) {
+    const canonical = canonicalizeScalarField(rawCanonical);
+    aliases[canonicalizeScalarField(rawAlias)] = canonical;
+    aliases[canonicalizeScalarField(rawAlias.replaceAll(" ", "_"))] = canonical;
+    aliases[canonicalizeScalarField(rawAlias.replaceAll(" ", "-"))] = canonical;
+    aliases[canonicalizeScalarField(canonical)] = canonical;
+    for (const generated of generatedAliasesForField(canonical)) {
+      aliases[canonicalizeScalarField(generated)] = canonical;
+    }
+  }
+  return aliases;
+}
+
 export function normalizeContext(context: Record<string, unknown>): {
   normalizedContext: Record<string, unknown>;
   warnings: string[];
 } {
   const normalizedContext: Record<string, unknown> = {};
   const warnings: string[] = [];
+  const aliases = builtinContextAliases();
 
   const visit = (value: unknown, prefix = ""): void => {
     if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -94,7 +164,8 @@ export function normalizeContext(context: Record<string, unknown>): {
       return;
     }
 
-    const field = canonicalizeScalarField(prefix);
+    const normalizedPrefix = canonicalizeScalarField(prefix);
+    const field = aliases[normalizedPrefix] ?? normalizedPrefix;
     if (!field) return;
     if (Object.prototype.hasOwnProperty.call(normalizedContext, field) && normalizedContext[field] !== value) {
       warnings.push(`Multiple values mapped to canonical field '${field}'.`);

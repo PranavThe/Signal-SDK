@@ -28,6 +28,42 @@ _PERSON_SCALAR_FIELDS = {
     "submitter",
     "user",
 }
+_BUILTIN_CONTEXT_ALIASES_RAW = {
+    "allowed pairs": "route.pair.cap",
+    "allowed_pairs": "route.pair.cap",
+    "departure date": "departure.date",
+    "departure_date": "departure.date",
+    "destination airport": "destination.airports",
+    "destination airports": "destination.airports",
+    "destinations": "destination.airports",
+    "non stop": "nonstop.only",
+    "non-stop": "nonstop.only",
+    "non_stop": "nonstop.only",
+    "nonstop": "nonstop.only",
+    "nonstop only": "nonstop.only",
+    "nonstop_only": "nonstop.only",
+    "operational risk": "operational.risk",
+    "origin airport": "origin.airports",
+    "origin airports": "origin.airports",
+    "origins": "origin.airports",
+    "provider limitation": "provider.limitation",
+    "provider limitations": "provider.limitation",
+    "requested pairs": "requested.route.pairs",
+    "requested route pairs": "requested.route.pairs",
+    "requested_pairs": "requested.route.pairs",
+    "return date": "return.date",
+    "return_date": "return.date",
+    "route pair cap": "route.pair.cap",
+    "route-pair cap": "route.pair.cap",
+    "route_pair_cap": "route.pair.cap",
+    "route pairs requested": "requested.route.pairs",
+    "routes requested per pair": "routes.requested.per.pair",
+    "routes requested per route pair": "routes.requested.per.pair",
+    "routes_requested_per_pair": "routes.requested.per.pair",
+    "sensitive data": "sensitive.data.included",
+    "sensitive data included": "sensitive.data.included",
+    "trip type": "trip.type",
+}
 
 
 def canonicalize_field_name(field: str) -> str:
@@ -44,9 +80,31 @@ def _canonicalize_scalar_field(field: str) -> str:
     return canonical
 
 
+def _generated_aliases_for_field(canonical_name: str) -> set[str]:
+    aliases = {canonical_name, canonical_name.replace(".", "_"), canonical_name.replace(".", "-")}
+    parts = canonical_name.split(".")
+    if len(parts) > 1:
+        aliases.add("".join([parts[0], *[part.title() for part in parts[1:]]]))
+    return {alias for alias in aliases if alias}
+
+
+def builtin_context_aliases() -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for raw_alias, raw_canonical in _BUILTIN_CONTEXT_ALIASES_RAW.items():
+        canonical = _canonicalize_scalar_field(raw_canonical)
+        aliases[_canonicalize_scalar_field(raw_alias)] = canonical
+        aliases[_canonicalize_scalar_field(raw_alias.replace(" ", "_"))] = canonical
+        aliases[_canonicalize_scalar_field(raw_alias.replace(" ", "-"))] = canonical
+        aliases[_canonicalize_scalar_field(canonical)] = canonical
+        for generated in _generated_aliases_for_field(canonical):
+            aliases[_canonicalize_scalar_field(generated)] = canonical
+    return aliases
+
+
 def normalize_context(context: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     normalized: dict[str, Any] = {}
     warnings: list[str] = []
+    aliases = builtin_context_aliases()
 
     def visit(value: Any, prefix: str = "") -> None:
         if isinstance(value, dict):
@@ -55,7 +113,8 @@ def normalize_context(context: dict[str, Any]) -> tuple[dict[str, Any], list[str
                 path = f"{prefix}.{key}" if prefix else key
                 visit(child, path)
             return
-        field = _canonicalize_scalar_field(prefix)
+        normalized_prefix = _canonicalize_scalar_field(prefix)
+        field = aliases.get(normalized_prefix, normalized_prefix)
         if not field:
             return
         if field in normalized and normalized[field] != value:

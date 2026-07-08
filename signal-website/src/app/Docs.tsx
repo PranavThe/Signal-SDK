@@ -19,7 +19,7 @@ function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
 }
 
 const DASHBOARD_URL = "https://signal-omega-tan.vercel.app/dashboard";
-const SIGNALOPS_VERSION = "0.2.0";
+const SIGNALOPS_VERSION = "0.2.1";
 
 function useIsNarrow(breakpoint: number) {
   const [isNarrow, setIsNarrow] = useState(false);
@@ -223,7 +223,7 @@ pip install signalops
 
 \`\`\`python
 import signalops
-print(signalops.__version__)  # Should print 0.2.0 or newer
+print(signalops.__version__)  # Should print 0.2.1 or newer
 \`\`\`
 
 ---
@@ -1131,7 +1131,7 @@ pip install signalops
 Or add it to your requirements.txt:
 
 \`\`\`
-signalops>=0.2.0
+signalops>=0.2.1
 \`\`\`
 
 ### Requirements
@@ -1877,7 +1877,7 @@ Visit ${DASHBOARD_URL} for more information.
                   <p style={{ marginTop: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
                     Or add it to your requirements.txt:
                   </p>
-                  <CodeBlock language="text" code="signalops>=0.2.0" />
+                  <CodeBlock language="text" code="signalops>=0.2.1" />
                 </div>
 
                 <div style={{ marginBottom: "3rem" }}>

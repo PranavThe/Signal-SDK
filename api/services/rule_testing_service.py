@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.models import Rule
-from api.services.context_schema_service import ContextSchemaService
+from api.services.context_schema_service import ContextSchemaService, builtin_context_aliases, canonicalize_scalar_field
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +149,12 @@ class RuleTestingService:
 
     def _get_nested_value(self, context: dict[str, Any], field: str) -> Any:
         """Get a potentially nested value from context using dot notation."""
-        parts = field.split(".")
+        normalized_field = canonicalize_scalar_field(field)
+        canonical_field = builtin_context_aliases().get(normalized_field, normalized_field)
+        if canonical_field in context:
+            return context.get(canonical_field)
+
+        parts = canonical_field.split(".")
         value = context
         for part in parts:
             if isinstance(value, dict):

@@ -5,17 +5,20 @@ from datetime import UTC, datetime
 from typing import Any
 
 from api.models import Rule
-from api.services.context_schema_service import canonicalize_scalar_field
+from api.services.context_schema_service import builtin_context_aliases, canonicalize_scalar_field
 
 
 def _context_value(context: dict[str, Any], field: str) -> Any:
     if field in context:
         return context.get(field)
-    canonical = canonicalize_scalar_field(field)
+    normalized_field = canonicalize_scalar_field(field)
+    canonical = builtin_context_aliases().get(normalized_field, normalized_field)
     if canonical in context:
         return context.get(canonical)
     for raw_key, value in context.items():
-        if canonicalize_scalar_field(str(raw_key)) == canonical and not isinstance(value, dict):
+        normalized_key = canonicalize_scalar_field(str(raw_key))
+        canonical_key = builtin_context_aliases().get(normalized_key, normalized_key)
+        if canonical_key == canonical and not isinstance(value, dict):
             return value
     if canonical.endswith(".name"):
         parent = canonical.removesuffix(".name")

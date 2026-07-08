@@ -1,5 +1,6 @@
 export {
   Signal,
+  builtinContextAliases,
   canonicalizeFieldName,
   normalizeContext,
   type CheckParams,

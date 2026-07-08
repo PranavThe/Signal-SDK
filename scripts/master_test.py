@@ -48,6 +48,13 @@ from api.models import (  # noqa: E402
     RuleConflict,
 )
 from api.routers.rules import _delete_org_rules  # noqa: E402
+from api.rule_engine import evaluate_condition  # noqa: E402
+from api.services.context_schema_service import (  # noqa: E402
+    ContextSchemaService,
+    builtin_context_aliases,
+    context_from_escalation_text,
+    parse_context_text,
+)
 from api.services.embedding_service import (  # noqa: E402
     embed,
     save_escalation_embedding,
@@ -610,6 +617,100 @@ async def run_policy_engine_tests(
     run_id: str,
 ) -> dict[str, Rule]:
     created: dict[str, Rule] = {}
+
+    async def context_shape_drift_normalization() -> str:
+        class BuiltinOnlyContextSchemaService(ContextSchemaService):
+            async def alias_map(self, session, org_id):  # type: ignore[override]
+                return builtin_context_aliases()
+
+        machine_context = {
+            "adults": 1,
+            "cabin": "ECONOMY",
+            "currency": "USD",
+            "decision": "approve running a California-to-Japan open route search",
+            "departure.date": "2026-08-22",
+            "destination.airports": ["HND", "NRT", "KIX", "ITM", "NGO", "FUK", "CTS", "OKA"],
+            "nonstop.only": False,
+            "operational.risk": "broad searches can be noisy and should be clearly labeled as open route data",
+            "origin.airports": ["LAX", "SFO", "SJC", "SAN", "SMF", "OAK"],
+            "provider": "OpenFlights route database",
+            "provider.limitation": "no live fares, date-specific schedules, or seat availability",
+            "requested.route.pairs": 48,
+            "return.date": "2026-09-01",
+            "route.pair.cap": 48,
+            "routes.requested.per.pair": 2,
+            "sensitive.data.included": "none",
+            "trip.type": "round-trip",
+        }
+        readable_context = (
+            "Decision: approve running a California-to-Japan open route search "
+            "Origin airports: LAX, SFO, SJC, SAN, SMF, OAK "
+            "Destination airports: HND, NRT, KIX, ITM, NGO, FUK, CTS, OKA "
+            "Departure date: 2026-08-22 Return date: 2026-09-01 Adults: 1 "
+            "Cabin: ECONOMY Currency: USD Nonstop only: False Requested route pairs: 48 "
+            "Route-pair cap: 48 Routes requested per route pair: 2 "
+            "Provider: OpenFlights route database "
+            "Provider limitation: no live fares, date-specific schedules, or seat availability "
+            "Sensitive data included: none "
+            "Operational risk: broad searches can be noisy and should be clearly labeled as open route data."
+        )
+        metadata = {
+            "non_stop": False,
+            "return_date": "2026-09-01",
+            "origin_count": 6,
+            "allowed_pairs": 48,
+            "departure_date": "2026-08-22",
+            "requested_pairs": 48,
+            "destination_count": 8,
+        }
+
+        parsed = parse_context_text(readable_context)
+        assert len(parsed) >= 16, f"readable context collapsed into too few fields: {parsed}"
+
+        service = BuiltinOnlyContextSchemaService()
+        machine = await service.normalize(None, org.id, machine_context, learn=False)
+        readable = await service.normalize(
+            None,
+            org.id,
+            context_from_escalation_text(readable_context, metadata),
+            learn=False,
+        )
+        fields = [
+            "origin.airports",
+            "destination.airports",
+            "departure.date",
+            "return.date",
+            "nonstop.only",
+            "requested.route.pairs",
+            "route.pair.cap",
+            "routes.requested.per.pair",
+            "provider.limitation",
+            "operational.risk",
+        ]
+        mismatches = [
+            field
+            for field in fields
+            if machine.normalized.get(field) != readable.normalized.get(field)
+        ]
+        assert not mismatches, {
+            field: (machine.normalized.get(field), readable.normalized.get(field))
+            for field in mismatches
+        }
+        legacy_conditions = {
+            "non.stop": False,
+            "allowed.pairs": 48,
+            "requested.pairs": 48,
+            "routes.requested.per.route.pair": 2,
+        }
+        for field, expected in legacy_conditions.items():
+            assert evaluate_condition(field, "eq", expected, readable.normalized), (
+                field,
+                expected,
+                readable.normalized,
+            )
+        return "dotted JSON, readable prose, and metadata aliases normalize to the same route-search facts"
+
+    await rec.step("context", "context shape drift normalization", context_shape_drift_normalization)
 
     async def no_rule_default() -> str:
         payload = await check_api(

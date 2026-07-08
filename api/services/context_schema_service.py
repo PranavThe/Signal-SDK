@@ -15,6 +15,18 @@ from api.models import ContextField, ContextFieldAlias, Rule
 
 _NON_WORD_RE = re.compile(r"[^a-zA-Z0-9]+")
 _CAMEL_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+_TITLE_KV_RE = re.compile(
+    r"(?:(?<=^)|(?<=[\n\r\t ]))"
+    r"([A-Z][A-Za-z0-9_.-]*(?:[ \t]+[a-z][A-Za-z0-9_.-]*){0,7})"
+    r"\s*[:=]\s*"
+)
+_MACHINE_KV_RE = re.compile(
+    r"(?:(?<=^)|(?<=[\n\r\t {,]))"
+    r"([a-z][a-z0-9_.-]*(?:[._-][a-z0-9_.-]+)+)"
+    r"\s*[:=]\s*"
+)
+_INT_RE = re.compile(r"^[+-]?\d+$")
+_FLOAT_RE = re.compile(r"^[+-]?(?:\d+\.\d+|\d+\.\d*|\.\d+)$")
 _PERSON_SCALAR_FIELDS = {
     "actor",
     "approver",
@@ -28,6 +40,43 @@ _PERSON_SCALAR_FIELDS = {
     "user",
 }
 _DECISION_KEYS = {"decision", "human_decision", "outcome", "result", "approved", "action"}
+_INVALID_INLINE_LABELS = {"http", "https", "mailto", "true", "false", "none", "null"}
+_BUILTIN_CONTEXT_ALIASES_RAW = {
+    "allowed pairs": "route.pair.cap",
+    "allowed_pairs": "route.pair.cap",
+    "departure date": "departure.date",
+    "departure_date": "departure.date",
+    "destination airport": "destination.airports",
+    "destination airports": "destination.airports",
+    "destinations": "destination.airports",
+    "non stop": "nonstop.only",
+    "non-stop": "nonstop.only",
+    "non_stop": "nonstop.only",
+    "nonstop": "nonstop.only",
+    "nonstop only": "nonstop.only",
+    "nonstop_only": "nonstop.only",
+    "operational risk": "operational.risk",
+    "origin airport": "origin.airports",
+    "origin airports": "origin.airports",
+    "origins": "origin.airports",
+    "provider limitation": "provider.limitation",
+    "provider limitations": "provider.limitation",
+    "requested pairs": "requested.route.pairs",
+    "requested route pairs": "requested.route.pairs",
+    "requested_pairs": "requested.route.pairs",
+    "return date": "return.date",
+    "return_date": "return.date",
+    "route pair cap": "route.pair.cap",
+    "route-pair cap": "route.pair.cap",
+    "route_pair_cap": "route.pair.cap",
+    "route pairs requested": "requested.route.pairs",
+    "routes requested per pair": "routes.requested.per.pair",
+    "routes requested per route pair": "routes.requested.per.pair",
+    "routes_requested_per_pair": "routes.requested.per.pair",
+    "sensitive data": "sensitive.data.included",
+    "sensitive data included": "sensitive.data.included",
+    "trip type": "trip.type",
+}
 
 
 @dataclass
@@ -90,6 +139,101 @@ def _merge_value(existing: Any, incoming: Any) -> Any:
     if incoming not in values:
         values.append(incoming)
     return values[:5]
+
+
+def _looks_like_comma_list(parts: list[str]) -> bool:
+    if len(parts) < 2:
+        return False
+    if all(" " not in part for part in parts):
+        return True
+    if len(parts) >= 4 and all(len(part) <= 16 and len(part.split()) <= 2 for part in parts):
+        return True
+    return all(re.fullmatch(r"[A-Z0-9_.-]{2,12}", part) for part in parts)
+
+
+def _coerce_context_value(value_text: str) -> Any:
+    text = (value_text or "").strip().strip(",").strip()
+    if not text:
+        return ""
+
+    if text[:1] in {"{", "[", '"'} or text in {"true", "false", "null"}:
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+    scalar_text = text[:-1].strip() if text.endswith(".") and not _FLOAT_RE.fullmatch(text) else text
+    lower = scalar_text.lower()
+    if lower == "true":
+        return True
+    if lower == "false":
+        return False
+    if lower in {"none", "null"}:
+        return None
+    if _INT_RE.fullmatch(scalar_text):
+        try:
+            return int(scalar_text)
+        except ValueError:
+            pass
+    if _FLOAT_RE.fullmatch(scalar_text):
+        try:
+            return float(scalar_text)
+        except ValueError:
+            pass
+
+    parts = [part.strip() for part in text.split(",") if part.strip()]
+    if _looks_like_comma_list(parts):
+        return [_coerce_context_value(part) for part in parts]
+
+    cleaned = text.strip('"').strip("'")
+    if cleaned.endswith(".") and len(cleaned) > 12:
+        cleaned = cleaned[:-1].rstrip()
+    return cleaned
+
+
+def _looks_like_context_label(label: str) -> bool:
+    raw = (label or "").strip()
+    canonical = canonicalize_field_name(raw)
+    if not canonical or canonical in _INVALID_INLINE_LABELS or len(canonical) > 80:
+        return False
+    if " " in raw and not raw[0].isupper():
+        return False
+    return len(canonical.split(".")) <= 8
+
+
+def _inline_key_matches(text: str) -> list[re.Match[str]]:
+    matches = [
+        match
+        for pattern in (_TITLE_KV_RE, _MACHINE_KV_RE)
+        for match in pattern.finditer(text)
+        if _looks_like_context_label(match.group(1))
+    ]
+    matches.sort(key=lambda match: (match.start(), -(match.end() - match.start())))
+
+    selected: list[re.Match[str]] = []
+    last_end = -1
+    for match in matches:
+        if match.start() < last_end:
+            continue
+        selected.append(match)
+        last_end = match.end()
+    return selected
+
+
+def _parse_inline_key_value_text(text: str) -> dict[str, Any]:
+    matches = _inline_key_matches(text)
+    if len(matches) < 2:
+        return {}
+
+    parsed: dict[str, Any] = {}
+    for index, match in enumerate(matches):
+        key = match.group(1).strip().strip('"').strip("'")
+        value_start = match.end()
+        value_end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        value_text = text[value_start:value_end].strip()
+        if value_text:
+            parsed[key] = _coerce_context_value(value_text)
+    return parsed
 
 
 def _flatten_value(value: Any, prefix: str = "") -> dict[str, Any]:
@@ -158,11 +302,11 @@ def parse_context_text(context: str) -> dict[str, Any]:
             continue
         key = match.group(1).strip().strip('"').strip("'")
         value_text = match.group(2).strip().strip(",").strip()
-        try:
-            value = json.loads(value_text)
-        except json.JSONDecodeError:
-            value = value_text.strip('"').strip("'")
-        parsed[key] = value
+        parsed[key] = _coerce_context_value(value_text)
+
+    inline_parsed = _parse_inline_key_value_text(text)
+    if len(inline_parsed) > len(parsed):
+        return inline_parsed
     return parsed
 
 
@@ -188,6 +332,19 @@ def generated_aliases_for_field(canonical_name: str) -> set[str]:
     return {alias for alias in aliases if alias}
 
 
+def builtin_context_aliases() -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for raw_alias, raw_canonical in _BUILTIN_CONTEXT_ALIASES_RAW.items():
+        canonical = canonicalize_scalar_field(raw_canonical)
+        aliases[canonicalize_scalar_field(raw_alias)] = canonical
+        aliases[canonicalize_scalar_field(raw_alias.replace(" ", "_"))] = canonical
+        aliases[canonicalize_scalar_field(raw_alias.replace(" ", "-"))] = canonical
+        aliases[canonicalize_scalar_field(canonical)] = canonical
+        for generated in generated_aliases_for_field(canonical):
+            aliases[canonicalize_scalar_field(generated)] = canonical
+    return aliases
+
+
 class ContextSchemaService:
     async def alias_map(self, session: AsyncSession, org_id: UUID) -> dict[str, str]:
         fields = (
@@ -206,6 +363,7 @@ class ContextSchemaService:
             field = by_id.get(alias.field_id)
             if field is not None:
                 alias_map[canonicalize_scalar_field(alias.alias)] = field.canonical_name
+        alias_map.update(builtin_context_aliases())
         return alias_map
 
     async def normalize(

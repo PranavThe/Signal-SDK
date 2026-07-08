@@ -3,11 +3,18 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from signal_sdk.client import CheckResult, EscalationResult, Signal, canonicalize_field_name, normalize_context
+from signal_sdk.client import (
+    CheckResult,
+    EscalationResult,
+    Signal,
+    builtin_context_aliases,
+    canonicalize_field_name,
+    normalize_context,
+)
 
 
 DEFAULT_BASE_URL = "https://signal-omega-tan.vercel.app"
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 _api_key: str | None = None
 _base_url: str | None = None
@@ -70,6 +77,7 @@ __all__ = [
     "EscalationResult",
     "Signal",
     "__version__",
+    "builtin_context_aliases",
     "canonicalize_field_name",
     "check",
     "client",
