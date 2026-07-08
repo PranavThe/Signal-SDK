@@ -12,8 +12,6 @@
     <button x-show="!isEmpty()" x-cloak @click="uploadOpen = !uploadOpen; importMessage = ''" class="border border-stone-950 bg-stone-950 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-stone-800" x-text="uploadOpen ? 'Close upload' : 'Upload judgments'"></button>
   </header>
 
-  <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
-
   <section x-show="loading" x-cloak class="border border-stone-200 p-6">
     <p class="text-sm text-stone-500">Loading training data...</p>
   </section>
@@ -53,7 +51,6 @@
           <button @click="downloadSample('csv')" class="text-sm font-semibold text-stone-500 underline-offset-4 hover:text-stone-950 hover:underline">Sample CSV</button>
           <button @click="downloadSample('json')" class="text-sm font-semibold text-stone-500 underline-offset-4 hover:text-stone-950 hover:underline">Sample JSON</button>
         </div>
-        <p x-show="importMessage" x-text="importMessage" x-cloak class="mt-4 border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
       </div>
     </div>
   </section>
@@ -91,7 +88,6 @@
         </div>
         <div class="mt-4 flex items-center gap-4">
           <button @click="importHistory()" :disabled="!historyFile || importing" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300" x-text="importing ? 'Importing...' : 'Import and analyze'"></button>
-          <p x-show="importMessage" x-text="importMessage" x-cloak class="text-sm text-stone-600"></p>
         </div>
       </div>
     </div>

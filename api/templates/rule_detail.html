@@ -15,8 +15,6 @@
   </div>
 </header>
 
-<p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
-
 <!-- Tabs -->
 <div class="border-b border-stone-200">
   <nav class="-mb-px flex space-x-8">
@@ -296,14 +294,20 @@
           const response = await fetch(`/admin/rules/${this.rule.id}/detail`, { credentials: "include" });
           if (!response.ok) {
             this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
-            if (showErrors) this.message = await this.failureMessage(response, `Could not refresh rule (${response.status}).`);
+            if (showErrors) {
+              this.message = await this.failureMessage(response, `Could not refresh rule (${response.status}).`);
+              window.signalToast(this.message, "error");
+            }
             return;
           }
           this.detail = await response.json();
           this.refreshDelayMs = 10000;
         } catch {
           this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
-          if (showErrors) this.message = "Connection interrupted. Retrying automatically.";
+          if (showErrors) {
+            this.message = "Connection interrupted. Retrying automatically.";
+            window.signalToast(this.message, "error");
+          }
         } finally {
           this.loading = false;
         }
@@ -343,12 +347,17 @@
           this.newComment = "";
           await this.loadComments();
           this.message = "Comment added successfully.";
+          window.signalToast(this.message, "success");
         } else {
           this.message = await this.failureMessage(response, "Failed to add comment.");
+          window.signalToast(this.message, "error");
         }
       },
       async submitEdit() {
-        if (!this.editText.trim()) return;
+        if (!this.editText.trim()) {
+          window.signalToast("Describe the rule change before submitting.", "error");
+          return;
+        }
         const response = await fetch(`/admin/review/rules/${this.rule.id}/edit`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -359,10 +368,12 @@
           this.showEditModal = false;
           this.editText = "";
           this.message = "Rule edit submitted for approval.";
+          window.signalToast(this.message, "success");
           await this.load(true);
           await this.loadVersions();
         } else {
           this.message = await this.failureMessage(response, "Failed to submit edit.");
+          window.signalToast(this.message, "error");
         }
       },
       async testRule() {
@@ -371,6 +382,7 @@
           context = JSON.parse(this.testContext);
         } catch (e) {
           this.message = "Invalid JSON in test context.";
+          window.signalToast(this.message, "error");
           return;
         }
         const response = await fetch(`/admin/rules/${this.rule.id}/test`, {
@@ -383,6 +395,7 @@
           this.testResult = await response.json();
         } else {
           this.message = await this.failureMessage(response, "Failed to test rule.");
+          window.signalToast(this.message, "error");
         }
       },
     };

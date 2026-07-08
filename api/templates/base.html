@@ -314,8 +314,6 @@
             <button @click="showModal = false" class="text-stone-400 hover:text-stone-950">&times;</button>
           </div>
 
-          <p x-show="message" x-text="message" x-cloak class="mb-4 rounded border-l-2 border-stone-300 bg-stone-50 px-3 py-2 text-sm" :class="messageType === 'success' ? 'border-emerald-500 text-emerald-700' : 'border-red-500 text-red-700'"></p>
-
           <form @submit.prevent="submitFeedback()" class="space-y-4">
             <div>
               <label for="feedback-category" class="block text-sm font-medium text-stone-700 mb-1">Category</label>
@@ -350,19 +348,15 @@
           showModal: false,
           feedbackText: "",
           category: "general",
-          message: "",
-          messageType: "",
           submitting: false,
 
           async submitFeedback() {
             if (!this.feedbackText.trim()) {
-              this.message = "Please enter your feedback.";
-              this.messageType = "error";
+              window.signalToast("Please enter your feedback.", "error");
               return;
             }
 
             this.submitting = true;
-            this.message = "";
 
             try {
               const response = await fetch("/admin/feedback", {
@@ -378,22 +372,18 @@
 
               if (response.ok) {
                 const data = await response.json();
-                this.message = data.message || "Feedback submitted successfully!";
-                this.messageType = "success";
+                window.signalToast(data.message || "Feedback submitted successfully!", "success");
                 this.feedbackText = "";
                 this.category = "general";
                 setTimeout(() => {
                   this.showModal = false;
-                  this.message = "";
                 }, 2000);
               } else {
                 const error = await response.json();
-                this.message = error.detail?.message || error.detail || "Failed to submit feedback.";
-                this.messageType = "error";
+                window.signalToast(error.detail?.message || error.detail || "Failed to submit feedback.", "error");
               }
             } catch (err) {
-              this.message = "An error occurred. Please try again.";
-              this.messageType = "error";
+              window.signalToast("An error occurred. Please try again.", "error");
             } finally {
               this.submitting = false;
             }

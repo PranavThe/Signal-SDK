@@ -17,8 +17,6 @@
       <h2 class="font-semibold">Subscriptions</h2>
       <p class="mt-1 text-sm text-stone-500">Each step adds more workspace capacity for teams, environments, and production agents.</p>
     </div>
-    <p x-show="subscriptionMessage" x-text="subscriptionMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
-
     <div class="grid border-y border-stone-200 lg:grid-cols-2 2xl:grid-cols-4 2xl:divide-x 2xl:divide-stone-200">
       <template x-for="plan in data.plans" :key="plan.tier">
         <div class="relative flex min-h-[380px] flex-col border-b border-stone-200 p-5 last:border-b-0 lg:odd:border-r lg:odd:border-stone-200 2xl:border-b-0 2xl:odd:border-r-0" :class="plan.effective ? 'z-10 font-semibold outline outline-2 -outline-offset-2 outline-stone-950' : ''">
@@ -69,10 +67,12 @@
         const params = new URLSearchParams(window.location.search);
         if (params.get("billing") === "success") {
           this.subscriptionMessage = "Subscription updated.";
+          window.signalToast(this.subscriptionMessage, "success");
           window.history.replaceState({}, document.title, "/dashboard/account");
         }
         if (params.get("billing") === "cancelled") {
           this.subscriptionMessage = "Subscription was not updated.";
+          window.signalToast(this.subscriptionMessage, "error");
           window.history.replaceState({}, document.title, "/dashboard/account");
         }
         this.refreshInterval = setInterval(() => this.load(true), 7000);
@@ -91,7 +91,10 @@
       async load(silent = false) {
         const response = await fetch("/admin/settings", { credentials: "include" });
         if (!response.ok) {
-          if (!silent) this.subscriptionMessage = await this.failureMessage(response, `Could not load account settings (${response.status}).`);
+          if (!silent) {
+            this.subscriptionMessage = await this.failureMessage(response, `Could not load account settings (${response.status}).`);
+            window.signalToast(this.subscriptionMessage, "error");
+          }
           return;
         }
         this.data = await response.json();

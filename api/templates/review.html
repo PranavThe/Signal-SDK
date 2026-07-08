@@ -12,8 +12,6 @@
     <button @click="load(true)" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Refresh</button>
   </header>
 
-  <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
-
   <p x-show="!hasOrg" class="text-sm text-stone-500">Select an organization from <a href="/dashboard" class="font-semibold underline-offset-4 hover:underline">Organizations</a> to load your review queue.</p>
   <p x-show="hasOrg && loading" x-cloak class="text-sm text-stone-500">Loading decisions...</p>
   <p x-show="hasOrg && !loading && items.length === 0" x-cloak class="text-sm text-stone-500">No decisions waiting.</p>
@@ -94,7 +92,6 @@
                     <button @click="decide(item.id, 'approve')" class="border border-emerald-600 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">Approve</button>
                     <button @click="decide(item.id, 'reject')" class="border border-red-600 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100">Reject</button>
                   </div>
-                  <span x-show="getActionState(`decide-${item.id}-approve`) || getActionState(`decide-${item.id}-reject`)" x-text="getActionState(`decide-${item.id}-approve`) || getActionState(`decide-${item.id}-reject`)" class="text-sm text-stone-600"></span>
                 </div>
               </div>
             </div>
@@ -120,7 +117,6 @@
                     <p class="mt-1 text-sm text-stone-600">Just for this specific case</p>
                   </button>
                 </div>
-                <p x-show="getActionState(`scope-${item.id}-rule`) || getActionState(`scope-${item.id}-once`)" x-text="getActionState(`scope-${item.id}-rule`) || getActionState(`scope-${item.id}-once`)" class="mt-3 text-sm text-stone-600"></p>
               </div>
             </div>
           </template>
@@ -206,7 +202,6 @@
                       Discard
                     </button>
                   </div>
-                  <span x-show="getActionState(`approve-${item.rule.id}`) || getActionState(`discard-${item.rule.id}`)" x-text="getActionState(`approve-${item.rule.id}`) || getActionState(`discard-${item.rule.id}`)" class="text-sm text-stone-600"></span>
                 </div>
               </div>
             </div>
@@ -284,7 +279,6 @@
                       Cancel
                     </button>
                   </div>
-                  <span x-show="getActionState(`edit-${item.rule.id}`)" x-text="getActionState(`edit-${item.rule.id}`)" class="text-sm text-stone-600"></span>
                 </div>
               </div>
             </div>
@@ -358,6 +352,7 @@
           if (!response.ok) {
             this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
             this.message = await this.failureMessage(response, `Could not load review queue (${response.status}).`);
+            if (showLoading) window.signalToast(this.message, "error");
             return;
           }
           const data = await response.json();
@@ -367,6 +362,7 @@
         } catch {
           this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
           this.message = "Connection interrupted. Retrying automatically.";
+          if (showLoading) window.signalToast(this.message, "error");
         } finally {
           if (showLoading) {
             this.loading = false;
@@ -382,6 +378,7 @@
       async post(path, body = {}, actionKey = null) {
         if (!this.hasOrg) {
           this.message = "Select an organization from Organizations first.";
+          window.signalToast(this.message, "error");
           return false;
         }
         if (actionKey) {
@@ -438,8 +435,7 @@
       async submitEdit(ruleId) {
         const editText = (this.edits[ruleId] || "").trim();
         if (!editText) {
-          this.setActionState(`edit-${ruleId}`, "Describe the rule change before updating.");
-          setTimeout(() => this.setActionState(`edit-${ruleId}`, ""), 3000);
+          window.signalToast("Describe the rule change before updating.", "error");
           return;
         }
         const ok = await this.post(`/admin/review/rules/${ruleId}/edit`, { edit_text: editText }, `edit-${ruleId}`);

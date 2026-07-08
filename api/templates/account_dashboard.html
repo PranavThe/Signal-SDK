@@ -20,8 +20,6 @@
       </div>
       <button @click="createOpen = !createOpen" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline" x-text="createOpen ? 'Cancel' : 'Create organization'"></button>
     </div>
-    <p x-show="orgMessage" x-text="orgMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
-
     <div x-show="createOpen" x-cloak class="border-y border-stone-200 py-5">
       <div class="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
         <div>
@@ -90,7 +88,10 @@
       async load(silent = false) {
         const response = await fetch("/admin/settings", { credentials: "include" });
         if (!response.ok) {
-          if (!silent) this.orgMessage = await this.failureMessage(response, `Could not load organizations (${response.status}).`);
+          if (!silent) {
+            this.orgMessage = await this.failureMessage(response, `Could not load organizations (${response.status}).`);
+            window.signalToast(this.orgMessage, "error");
+          }
           return;
         }
         this.data = await response.json();

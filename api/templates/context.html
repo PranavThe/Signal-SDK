@@ -21,8 +21,6 @@
     </div>
   </header>
 
-  <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
-
   <section x-show="loading" x-cloak class="border border-stone-200 p-6">
     <p class="text-sm text-stone-500">Loading context schema...</p>
   </section>
@@ -104,7 +102,6 @@
 
       <div class="flex items-center gap-4 sm:col-span-2">
         <button type="submit" :disabled="saving" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300" x-text="saving ? 'Saving...' : 'Save field'"></button>
-        <p x-show="formMessage" x-text="formMessage" x-cloak class="text-sm text-stone-500"></p>
       </div>
     </form>
   </section>

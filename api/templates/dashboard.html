@@ -12,8 +12,6 @@
   <p x-show="hasOrg" x-cloak class="text-sm text-stone-500">Live</p>
 </header>
 
-<p x-show="pageMessage" x-text="pageMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
-
 <section class="border-y border-stone-200 py-5">
   <p class="text-lg font-medium leading-8 text-stone-950" x-text="healthSummary"></p>
   <div class="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-stone-500">
@@ -115,8 +113,6 @@
       <span x-show="scanning" x-cloak>Scanning...</span>
     </button>
   </div>
-  <p x-show="scanMessage" x-text="scanMessage" x-cloak class="mb-4 border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
-  <p x-show="suggestionMessage" x-text="suggestionMessage" x-cloak class="mb-4 border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
   <div class="border-y border-stone-200 divide-y divide-stone-100">
     <template x-for="suggestion in suggestions" :key="suggestion.id">
       <div class="py-4">
@@ -254,14 +250,20 @@
           const response = await fetch("/admin/overview", { credentials: "include" });
           if (!response.ok) {
             this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
-            if (showErrors) this.pageMessage = await this.failureMessage(response, `Could not refresh dashboard (${response.status}).`);
+            if (showErrors) {
+              this.pageMessage = await this.failureMessage(response, `Could not refresh dashboard (${response.status}).`);
+              window.signalToast(this.pageMessage, "error");
+            }
             return;
           }
           this.overview = await response.json();
           this.refreshDelayMs = 5000;
         } catch {
           this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
-          if (showErrors) this.pageMessage = "Connection interrupted. Retrying automatically.";
+          if (showErrors) {
+            this.pageMessage = "Connection interrupted. Retrying automatically.";
+            window.signalToast(this.pageMessage, "error");
+          }
         } finally {
           this.loading = false;
         }
@@ -325,6 +327,7 @@
       async acceptSuggestion(suggestionId) {
         if (!this.hasOrg) {
           this.suggestionMessage = "Select an organization before accepting suggestions.";
+          window.signalToast(this.suggestionMessage, "error");
           return;
         }
         const response = await fetch(`/admin/consolidation/${suggestionId}/accept`, {
@@ -343,6 +346,7 @@
       async dismissSuggestion(suggestionId) {
         if (!this.hasOrg) {
           this.suggestionMessage = "Select an organization before declining suggestions.";
+          window.signalToast(this.suggestionMessage, "error");
           return;
         }
         const response = await fetch(`/admin/consolidation/${suggestionId}/decline`, {

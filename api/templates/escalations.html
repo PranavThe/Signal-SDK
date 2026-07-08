@@ -12,8 +12,6 @@
     <p x-show="hasOrg" x-cloak class="text-sm text-stone-500">Live</p>
   </header>
 
-  <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
-
   <div class="space-y-3 border-y border-stone-200 py-4">
     <input
       type="text"
@@ -332,7 +330,10 @@
           const response = await fetch("/admin/escalations?limit=100", { credentials: "include" });
           if (!response.ok) {
             this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
-            if (showErrors) this.message = await this.failureMessage(response, `Could not refresh escalations (${response.status}).`);
+            if (showErrors) {
+              this.message = await this.failureMessage(response, `Could not refresh escalations (${response.status}).`);
+              window.signalToast(this.message, "error");
+            }
             return;
           }
           const data = await response.json();
@@ -340,7 +341,10 @@
           this.refreshDelayMs = 5000;
         } catch {
           this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
-          if (showErrors) this.message = "Connection interrupted. Retrying automatically.";
+          if (showErrors) {
+            this.message = "Connection interrupted. Retrying automatically.";
+            window.signalToast(this.message, "error");
+          }
         } finally {
           this.loading = false;
         }

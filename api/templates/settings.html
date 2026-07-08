@@ -12,8 +12,6 @@
     <a href="/dashboard" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Switch organization</a>
   </header>
 
-  <p x-show="pageMessage" x-text="pageMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
-
   <template x-if="settings === null">
     <section class="border border-stone-200 p-6">
       <p class="text-sm text-stone-500">Loading settings...</p>
@@ -59,8 +57,6 @@
         </div>
 
         <p x-show="settings && !canCreateApiKey()" x-cloak class="mt-4 border-l-2 border-stone-300 pl-3 text-sm text-stone-600">This organization has reached the API key limit for your account plan. Upgrade in Account Settings to add more.</p>
-        <p x-show="keyMessage" x-text="keyMessage" x-cloak class="mt-4 border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
-
         <div x-show="newKeyOpen" x-cloak class="mt-5 border-y border-stone-200 py-4">
           <div class="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
             <div>
@@ -118,8 +114,6 @@
             >Slack + dashboard</button>
           </div>
         </div>
-
-        <p x-show="reviewMessage" x-text="reviewMessage" x-cloak class="mt-4 border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
 
         <div x-show="settings.organization.slack_notifications_enabled" x-cloak class="mt-5 border-t border-stone-200 pt-5">
           <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="slack-channel">Slack channel ID</label>
@@ -199,6 +193,7 @@
         if (!response.ok) {
           if (!silent && response.status !== 401) {
             this.pageMessage = await this.failureMessage(response, `Could not load settings (${response.status}).`);
+            window.signalToast(this.pageMessage, "error");
           }
           return;
         }
@@ -283,6 +278,7 @@
       async generateNewKey() {
         if (!this.newKeyName.trim()) {
           this.keyMessage = "Enter a name for the new key.";
+          window.signalToast(this.keyMessage, "error");
           return;
         }
         const response = await fetch("/admin/api-keys/generate", {
