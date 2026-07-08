@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -11,6 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.models import ContextField, ContextFieldAlias, Rule
+
+logger = logging.getLogger(__name__)
 
 
 _NON_WORD_RE = re.compile(r"[^a-zA-Z0-9]+")
@@ -141,57 +144,74 @@ def _merge_value(existing: Any, incoming: Any) -> Any:
     return values[:5]
 
 
-def _coerce_to_schema_type(value: Any, expected_type: str | None) -> Any:
+def _coerce_to_schema_type(value: Any, expected_type: str | None, field_name: str = "") -> Any:
     """Coerce a value to match the expected schema type for consistency.
 
     This ensures that fields always have consistent types across escalations.
     For example, 'cwes' should always be an array, never sometimes string/sometimes array.
     """
     if expected_type is None or expected_type == "unknown":
+        logger.debug(f"[COERCE] {field_name}: no type constraint, keeping value as-is: {type(value).__name__}")
         return value
+
+    actual_type = type(value).__name__
 
     # Array type: always return as array
     if expected_type == "array":
         if value is None:
+            logger.debug(f"[COERCE] {field_name}: expected=array, got=None, returning []")
             return []
         if isinstance(value, list):
+            logger.debug(f"[COERCE] {field_name}: expected=array, got=array, keeping as-is")
             return value
         # Single value → wrap in array for consistency
+        logger.warning(f"[COERCE] {field_name}: expected=array, got={actual_type}, wrapping in array: {value} → [{value}]")
         return [value]
 
     # String type: convert to string if not already
     if expected_type == "string":
         if isinstance(value, str):
+            logger.debug(f"[COERCE] {field_name}: expected=string, got=string, keeping as-is")
             return value
         if isinstance(value, list) and len(value) == 1:
             # Single-element array → unwrap to string
+            logger.warning(f"[COERCE] {field_name}: expected=string, got=array[1], unwrapping: {value} → {str(value[0])}")
             return str(value[0])
+        logger.warning(f"[COERCE] {field_name}: expected=string, got={actual_type}, converting to string: {value} → {str(value)}")
         return str(value) if value is not None else ""
 
     # Number types
     if expected_type in ("integer", "number"):
         if isinstance(value, (int, float)):
+            logger.debug(f"[COERCE] {field_name}: expected={expected_type}, got=number, keeping as-is")
             return value
         if isinstance(value, str):
             try:
-                return int(value) if expected_type == "integer" else float(value)
+                coerced = int(value) if expected_type == "integer" else float(value)
+                logger.warning(f"[COERCE] {field_name}: expected={expected_type}, got=string, parsing: {value} → {coerced}")
+                return coerced
             except ValueError:
+                logger.warning(f"[COERCE] {field_name}: expected={expected_type}, got=string but parse failed, keeping as-is")
                 pass
         return value
 
     # Boolean type
     if expected_type == "boolean":
         if isinstance(value, bool):
+            logger.debug(f"[COERCE] {field_name}: expected=boolean, got=boolean, keeping as-is")
             return value
         if isinstance(value, str):
             lower = value.lower()
             if lower in ("true", "yes", "1"):
+                logger.warning(f"[COERCE] {field_name}: expected=boolean, got=string, converting: {value} → True")
                 return True
             if lower in ("false", "no", "0"):
+                logger.warning(f"[COERCE] {field_name}: expected=boolean, got=string, converting: {value} → False")
                 return False
         return value
 
     # Default: return as-is
+    logger.debug(f"[COERCE] {field_name}: unknown expected_type={expected_type}, keeping as-is")
     return value
 
 
@@ -438,6 +458,10 @@ class ContextSchemaService:
         ).scalars().all()
         field_types = {field.canonical_name: field.field_type for field in fields}
 
+        logger.info(f"[NORMALIZE] Loaded {len(field_types)} field types from database for org {org_id}")
+        if field_types:
+            logger.debug(f"[NORMALIZE] Field types: {field_types}")
+
         normalized: dict[str, Any] = {}
         alias_hits: dict[str, str] = {}
         warnings: list[str] = []
@@ -447,7 +471,8 @@ class ContextSchemaService:
 
             # Coerce value to match learned schema type for consistency
             expected_type = field_types.get(canonical_key)
-            coerced_value = _coerce_to_schema_type(value, expected_type)
+            logger.debug(f"[NORMALIZE] Processing field '{raw_key}' → '{canonical_key}', expected_type={expected_type}, value_type={type(value).__name__}")
+            coerced_value = _coerce_to_schema_type(value, expected_type, canonical_key)
 
             if canonical_key in normalized:
                 normalized[canonical_key] = _merge_value(normalized[canonical_key], coerced_value)
@@ -459,6 +484,8 @@ class ContextSchemaService:
 
         for raw_key, canonical_key in alias_hits.items():
             warnings.append(f"Normalized context field '{raw_key}' to canonical field '{canonical_key}'.")
+
+        logger.info(f"[NORMALIZE] Normalized {len(raw_flat)} raw fields to {len(normalized)} canonical fields")
 
         if learn:
             await self.learn_fields(session, org_id, normalized, raw_flat, source=source)
@@ -486,16 +513,21 @@ class ContextSchemaService:
         created = 0
         now = datetime.now(UTC)
 
+        logger.info(f"[LEARN] Learning from {len(normalized)} normalized fields (source={source})")
+
         for field_name, value in normalized.items():
             if not field_name:
                 continue
             field = fields_by_name.get(field_name)
             sample = _jsonable_sample(value)
+            inferred_type = _infer_type(value)
+
             if field is None:
+                logger.info(f"[LEARN] NEW FIELD '{field_name}': type={inferred_type}, value={value}")
                 field = ContextField(
                     org_id=org_id,
                     canonical_name=field_name,
-                    field_type=_infer_type(value),
+                    field_type=inferred_type,
                     description=f"Observed context field '{field_name}'.",
                     sample_values=[sample],
                     occurrence_count=1,
@@ -509,8 +541,16 @@ class ContextSchemaService:
                 if sample not in samples:
                     samples.append(sample)
                 field.sample_values = samples[:8]
+
                 if field.field_type in {"unknown", "null"}:
-                    field.field_type = _infer_type(value)
+                    logger.warning(f"[LEARN] UPDATING FIELD '{field_name}': type={field.field_type} → {inferred_type}, value={value}")
+                    field.field_type = inferred_type
+                else:
+                    if inferred_type != field.field_type:
+                        logger.error(f"[LEARN] TYPE CONFLICT '{field_name}': stored={field.field_type}, incoming={inferred_type}, value={value}. NOT UPDATING TYPE!")
+                    else:
+                        logger.debug(f"[LEARN] Updating field '{field_name}': type={field.field_type} (unchanged), occurrence_count={field.occurrence_count} → {field.occurrence_count + 1}")
+
                 field.occurrence_count += 1
                 field.updated_at = now
 
@@ -521,6 +561,7 @@ class ContextSchemaService:
                         aliases.add(raw_key)
             await self._ensure_aliases(session, org_id, field, aliases, source)
 
+        logger.info(f"[LEARN] Created {created} new fields, updated {len(normalized) - created} existing fields")
         return created
 
     async def _ensure_aliases(
