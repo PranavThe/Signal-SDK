@@ -503,3 +503,45 @@ class Feedback(Base):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class LLMOperationLog(Base):
+    __tablename__ = "llm_operation_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    org_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"))
+    operation_type: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Inputs
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Outputs
+    response: Mapped[str] = mapped_column(Text, nullable=False)
+    parsed_output: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+    # Metrics
+    tokens_input: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    tokens_output: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0.0")
+
+    # Quality
+    confidence_score: Mapped[float | None] = mapped_column(Float)
+    validation_passed: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    # References
+    escalation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("escalations.id"))
+    rule_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("rules.id"))
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
