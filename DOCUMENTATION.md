@@ -230,6 +230,50 @@ Click any row to expand and see:
 
 ---
 
+### Activity Tab
+
+The Activity tab provides a chronological timeline of all agent activity, including policy checks, escalations, and rule changes.
+
+#### Activity Types
+
+Each activity is labeled and color-coded:
+
+- **Auto-handled** (green): Decisions automatically resolved by existing rules
+  - Shows for both policy checks and auto-resolved escalations
+  - Displays the matched rule condition and action
+  - Indicates successful automation
+- **Checked** (neutral): Policy checks where no rule matched
+  - Shows the action that was checked
+  - Displays the reasoning (typically "No applicable rule found")
+- **Escalated** (warning/yellow): Escalations waiting for human decision
+  - Shows the escalation question
+  - Remains until resolved
+- **Resolved** (neutral): Escalations manually resolved by a human
+  - Shows the human decision and reasoning
+  - Distinguished from auto-resolved escalations
+- **Rule created/updated** (success): Changes to your rule set
+
+#### Features
+
+- **Search**: Search across activity kinds, titles, summaries, and rule details
+- **Filter by Kind**: Filter to show only specific activity types
+- **Auto-refresh**: Updates every 7 seconds automatically
+- **Rule Links**: Click "View rule" to jump to rule details
+- **Expandable Details**: Click "Details" to see full context as formatted JSON
+- **Auto-resolved Badge**: Auto-resolved escalations display a green badge
+
+#### Understanding Auto-Resolution
+
+When you see "Auto-handled" with an escalation:
+- The escalation was created but immediately resolved by a matching rule
+- No human intervention was required
+- The agent received the decision instantly
+- Your autonomy score increased
+
+This is different from "Checked" activities, which use the `/v1/check` endpoint and don't create escalations.
+
+---
+
 ### Settings Tab
 
 Configure your organization and manage access.
@@ -282,7 +326,7 @@ signalops.configure(
 
 ### escalate()
 
-Escalate a decision to Signal and wait for human review:
+Escalate a decision to Signal. **Automatically checks existing rules first** - if a rule matches, returns immediately with the decision. If no rule matches, waits for human review:
 
 ```python
 result = await signalops.escalate(
@@ -317,6 +361,22 @@ An `EscalationResult` object with:
 - `decision` (str): The decision made ("approve", "reject", etc.)
 - `rule_id` (str|None): ID of the rule that made this decision (if auto-resolved)
 - `auto_resolved` (bool): Whether this was resolved by a rule without human review
+  - `True`: A matching rule was found and applied immediately (no waiting)
+  - `False`: Required human review and decision
+
+**Auto-Resolution:**
+
+When `escalate()` is called, Signal first checks all active rules. If a rule matches the context:
+- Returns **immediately** (typically < 1 second)
+- Sets `auto_resolved=True`
+- Provides the rule's decision in `decision`
+- Does NOT create a pending escalation in the Review queue
+- Increases your autonomy score
+
+If no rule matches:
+- Creates a pending escalation
+- Waits for human decision (up to `timeout_seconds`)
+- Sets `auto_resolved=False` when decision is made
 
 **Context Warnings:**
 
@@ -355,11 +415,54 @@ result = await signalops.check(
 
 A `CheckResult` object with:
 
-- `result` (str): "allow", "block", or "escalate"
-- `rule_id` (str|None): ID of the matching rule (if any)
+- `result` (str): The decision - "proceed", "block", "reject", "deny", "escalate", "modify", etc.
+- `rule_id` (str|None): ID of the matching rule (None if no rule matched)
 - `reasoning` (str): Explanation for the result
-- `modification` (dict|None): Any suggested modifications to the action
+- `modification` (dict|None): Modification parameters if result is "modify"
 - `context_warnings` (list[str]): List of validation warnings about the context
+
+**When to use check() vs escalate():**
+
+Use **`escalate()`** when:
+- You want decisions to learn over time (creates learning data)
+- You're okay with waiting for human review when no rule exists
+- You want the escalation to appear in the dashboard for analysis
+- Most common use case - handles both auto-resolution AND human fallback
+
+Use **`check()`** when:
+- You only want to check existing rules (no escalation if no rule)
+- You need to handle the "no rule" case yourself with custom logic
+- You want to avoid creating escalation records
+- You need lower latency for rule-only checks
+
+**Example:**
+
+```python
+# ✅ RECOMMENDED: Use escalate() - handles both cases
+result = await signalops.escalate(
+    agent_id="refund-bot",
+    question="Should I approve this refund?",
+    context={"amount": 150, "customer_tier": "premium"}
+)
+# Auto-resolves if rule exists, OR waits for human if not
+proceed = result.decision == "approve"
+
+# ⚠️ ONLY if you need rule-only checking with custom fallback:
+check_result = await signalops.check(
+    action="approve_refund",
+    context={"amount": 150, "customer_tier": "premium"},
+    agent_id="refund-bot"
+)
+if check_result.result in ("proceed", "approve"):
+    proceed = True
+elif check_result.result in ("block", "reject"):
+    proceed = False
+else:
+    # No rule exists - you must handle this yourself
+    proceed = amount < 50  # Custom fallback logic
+```
+
+**Note:** Since `escalate()` now auto-checks rules first, you rarely need to use `check()` before `escalate()`.
 
 ### Context Best Practices
 

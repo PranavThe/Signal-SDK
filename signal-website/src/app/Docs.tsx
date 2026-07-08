@@ -389,7 +389,7 @@ signalops.configure(
 
 ### signalops.escalate()
 
-Escalate a decision to Signal. This will either return a decision from an existing rule, or wait for human review.
+Escalate a decision to Signal. **Automatically checks existing rules first** - if a rule matches, returns immediately (< 1 second). If no rule matches, waits for human review.
 
 **Parameters:**
 
