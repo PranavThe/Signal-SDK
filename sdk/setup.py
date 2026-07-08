@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="signalops",
-    version="0.2.1",
+    version="0.2.2",
     description="Operational intelligence for AI agents. Human judgment should compound, not evaporate.",
     long_description=open("README.md").read() if __import__("os").path.exists("README.md") else "",
     long_description_content_type="text/markdown",

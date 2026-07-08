@@ -14,18 +14,35 @@ from signal_sdk.client import (
 
 
 DEFAULT_BASE_URL = "https://signal-omega-tan.vercel.app"
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 _api_key: str | None = None
 _base_url: str | None = None
+_dev_mode: bool = False
+_auto_enrich: bool = True
 
 
-def configure(api_key: str | None = None, base_url: str | None = None) -> None:
-    global _api_key, _base_url
+def configure(
+    api_key: str | None = None,
+    base_url: str | None = None,
+    dev_mode: bool = False,
+    auto_enrich: bool = True,
+) -> None:
+    """Configure Signal globally.
+
+    Args:
+        api_key: Your Signal API key (can also use SIGNALOPS_API_KEY env var)
+        base_url: Custom Signal deployment URL
+        dev_mode: Enable debug logging for development
+        auto_enrich: Automatically add timestamp and environment to context
+    """
+    global _api_key, _base_url, _dev_mode, _auto_enrich
     if api_key is not None:
         _api_key = api_key
     if base_url is not None:
         _base_url = base_url
+    _dev_mode = dev_mode
+    _auto_enrich = auto_enrich
 
 
 def client(api_key: str | None = None, base_url: str | None = None) -> Signal:
@@ -33,7 +50,12 @@ def client(api_key: str | None = None, base_url: str | None = None) -> Signal:
     if not resolved_api_key:
         raise RuntimeError("Set SIGNALOPS_API_KEY or call signalops.configure(api_key=...).")
     resolved_base_url = base_url or _base_url or os.getenv("SIGNALOPS_BASE_URL") or DEFAULT_BASE_URL
-    return Signal(api_key=resolved_api_key, base_url=resolved_base_url)
+    return Signal(
+        api_key=resolved_api_key,
+        base_url=resolved_base_url,
+        dev_mode=_dev_mode,
+        auto_enrich=_auto_enrich,
+    )
 
 
 async def escalate(
@@ -72,10 +94,22 @@ async def check(
     )
 
 
+# Re-export exceptions
+from signalops.exceptions import (  # noqa: E402
+    SignalAuthError,
+    SignalError,
+    SignalNetworkError,
+    SignalTimeout,
+)
+
 __all__ = [
     "CheckResult",
     "EscalationResult",
     "Signal",
+    "SignalAuthError",
+    "SignalError",
+    "SignalNetworkError",
+    "SignalTimeout",
     "__version__",
     "builtin_context_aliases",
     "canonicalize_field_name",
