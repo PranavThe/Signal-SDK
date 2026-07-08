@@ -13,6 +13,7 @@ from api.models import PolicyCheckLog, Rule
 from api.rate_limit import limiter
 from api.rule_engine import conflicting_actions, matching_rules_for_context, most_specific_rules, rule_precedence_key
 from api.schemas import CheckRequest, CheckResponse
+from api.services.context_schema_service import ContextSchemaService
 from api.services.embedding_service import embed
 from api.services.semantic_service import find_semantic_rule_match, semantic_policy_text
 from api.services.webhook_service import send_rule_triggered_webhook_by_org_id
@@ -32,6 +33,14 @@ async def check_policy(
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_key),
 ) -> CheckResponse:
+    context_result = await ContextSchemaService().normalize(
+        session,
+        auth.org_id,
+        payload.context,
+        learn=True,
+        source="check",
+    )
+    normalized_context = context_result.normalized
     rules = (
         await session.execute(
             select(Rule).where(
@@ -40,7 +49,7 @@ async def check_policy(
             )
         )
     ).scalars().all()
-    exact_candidates = most_specific_rules(matching_rules_for_context(list(rules), payload.context, payload.agent_id))
+    exact_candidates = most_specific_rules(matching_rules_for_context(list(rules), normalized_context, payload.agent_id))
     has_rule_conflict = conflicting_actions(exact_candidates)
     matched_rule = None
     semantic_similarity: float | None = None
@@ -51,7 +60,7 @@ async def check_policy(
 
     if matched_rule is None and not has_rule_conflict:
         try:
-            semantic_text = semantic_policy_text(payload.action, payload.context)
+            semantic_text = semantic_policy_text(payload.action, normalized_context)
             semantic_match = await find_semantic_rule_match(
                 session,
                 await embed(semantic_text),
@@ -101,6 +110,7 @@ async def check_policy(
         agent_id=payload.agent_id,
         action=payload.action,
         context=payload.context,
+        normalized_context=normalized_context,
         result=result,
         org_id=auth.org_id,
         rule_id=rule_id,
@@ -122,6 +132,7 @@ async def check_policy(
                 "agent_id": payload.agent_id,
                 "action": payload.action,
                 "context": payload.context,
+                "normalized_context": normalized_context,
                 "result": result,
                 "reasoning": reasoning,
                 "trigger_count": matched_rule.trigger_count,
@@ -133,4 +144,5 @@ async def check_policy(
         rule_id=rule_id,
         reasoning=reasoning,
         modification=modification,
+        context_warnings=context_result.warnings,
     )

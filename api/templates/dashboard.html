@@ -7,35 +7,73 @@
 <header class="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
   <div>
     <p class="text-sm font-medium text-stone-500">Overview</p>
-    <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Agent autonomy</h1>
+    <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Agent trust dashboard</h1>
   </div>
   <p x-show="hasOrg" x-cloak class="text-sm text-stone-500">Live</p>
 </header>
 
 <p x-show="pageMessage" x-text="pageMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
 
-<section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-  <div class="border border-stone-200 p-5">
-    <p class="text-sm text-stone-500">Total agent decisions today</p>
-    <p class="mt-3 text-3xl font-semibold tracking-tight" x-text="stats.total_decisions_today"></p>
-  </div>
-  <div class="border border-stone-200 p-5">
-    <p class="text-sm text-stone-500">Handled automatically</p>
-    <p class="mt-3 text-3xl font-semibold tracking-tight" x-text="stats.auto_handled_today"></p>
-  </div>
-  <div class="border border-stone-200 p-5">
-    <p class="text-sm text-stone-500">Escalations today</p>
-    <p class="mt-3 text-3xl font-semibold tracking-tight" x-text="stats.escalations_today"></p>
-  </div>
-  <div class="border border-stone-200 p-5">
-    <p class="text-sm text-stone-500">Autonomy score</p>
-    <p class="mt-3 text-3xl font-semibold tracking-tight" x-text="stats.autonomy_score"></p>
+<section class="border-y border-stone-200 py-5">
+  <p class="text-lg font-medium leading-8 text-stone-950" x-text="healthSummary"></p>
+  <div class="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-stone-500">
+    <a href="/dashboard/review" class="font-medium text-stone-950 underline-offset-4 hover:underline">
+      <span x-text="stats.pending_review + stats.pending_rules"></span> waiting for review
+    </a>
+    <span><span x-text="stats.week_total_decisions"></span> decisions this week</span>
+    <span><span x-text="stats.week_auto_handled"></span> auto-handled</span>
+    <span><span x-text="stats.week_escalations"></span> escalated</span>
   </div>
 </section>
 
+<section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  <a href="/dashboard/escalations" class="border border-stone-200 p-5 transition hover:border-stone-950">
+    <p class="text-sm text-stone-500">Total agent decisions today</p>
+    <p class="mt-3 text-3xl font-semibold tracking-tight" x-text="stats.total_decisions_today"></p>
+  </a>
+  <a href="/dashboard/rules" class="border border-stone-200 p-5 transition hover:border-stone-950">
+    <p class="text-sm text-stone-500">Handled automatically</p>
+    <p class="mt-3 text-3xl font-semibold tracking-tight" x-text="stats.auto_handled_today"></p>
+  </a>
+  <a href="/dashboard/escalations" class="border border-stone-200 p-5 transition hover:border-stone-950">
+    <p class="text-sm text-stone-500">Escalations today</p>
+    <p class="mt-3 text-3xl font-semibold tracking-tight" x-text="stats.escalations_today"></p>
+  </a>
+  <a href="/dashboard/review" class="border border-stone-200 p-5 transition hover:border-stone-950">
+    <p class="text-sm text-stone-500">Autonomy score</p>
+    <p class="mt-3 text-3xl font-semibold tracking-tight" x-text="stats.autonomy_score"></p>
+  </a>
+</section>
+
 <section class="border-t border-stone-200 pt-5">
-  <div class="pb-4">
-    <h2 class="font-semibold">Autonomy score trend</h2>
+  <div class="flex flex-col justify-between gap-2 pb-4 sm:flex-row sm:items-end">
+    <div>
+      <h2 class="font-semibold">Autonomy score trend</h2>
+      <p class="mt-1 text-sm text-stone-500">Seven-day view of automatic handling versus escalations.</p>
+    </div>
+    <p class="text-sm font-semibold text-stone-950" x-text="stats.week_autonomy_score + ' this week'"></p>
+  </div>
+  <div class="border-y border-stone-200 py-5">
+    <svg viewBox="0 0 700 220" class="h-56 w-full overflow-visible" preserveAspectRatio="none" aria-label="Autonomy trend chart">
+      <line x1="0" y1="180" x2="700" y2="180" stroke="#e7e5e4" stroke-width="1"></line>
+      <template x-for="bar in chartBars()" :key="bar.label">
+        <g>
+          <rect :x="bar.x" :y="bar.y" :width="bar.width" :height="bar.height" fill="#e7e5e4"></rect>
+          <text :x="bar.x + bar.width / 2" y="210" text-anchor="middle" class="fill-stone-500 text-[11px]" x-text="bar.label"></text>
+        </g>
+      </template>
+      <polyline :points="chartPoints()" fill="none" stroke="#0c0a09" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline>
+      <template x-for="point in chartDots()" :key="point.label">
+        <g>
+          <circle :cx="point.x" :cy="point.y" r="4" fill="#0c0a09"></circle>
+          <text :x="point.x" :y="point.y - 10" text-anchor="middle" class="fill-stone-700 text-[11px]" x-text="point.autonomy + '%'"></text>
+        </g>
+      </template>
+    </svg>
+    <div class="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-xs text-stone-500">
+      <span>Line: autonomy %</span>
+      <span>Bars: escalation volume</span>
+    </div>
   </div>
   <div class="overflow-x-auto">
     <table class="min-w-full border-y border-stone-200 text-sm">
@@ -149,14 +187,25 @@
       scanMessage: "",
       suggestionMessage: "",
       scanning: false,
-      refreshInterval: null,
+      refreshTimer: null,
+      refreshDelayMs: 5000,
+      loading: false,
       get stats() {
         return this.overview.stats || {
           total_decisions_today: 0,
           auto_handled_today: 0,
           escalations_today: 0,
           autonomy_score: "0.0%",
+          pending_review: 0,
+          pending_rules: 0,
+          week_total_decisions: 0,
+          week_auto_handled: 0,
+          week_escalations: 0,
+          week_autonomy_score: "0.0%",
         };
+      },
+      get healthSummary() {
+        return this.overview.health_summary || "No agent decisions have been recorded yet.";
       },
       get trend() {
         return this.overview.trend || [];
@@ -176,10 +225,17 @@
           return;
         }
         this.load(false);
-        this.refreshInterval = setInterval(() => this.load(false), 5000);
+        this.scheduleRefresh();
         window.addEventListener("beforeunload", () => {
-          if (this.refreshInterval) clearInterval(this.refreshInterval);
+          if (this.refreshTimer) clearTimeout(this.refreshTimer);
         });
+      },
+      scheduleRefresh(delay = this.refreshDelayMs) {
+        if (this.refreshTimer) clearTimeout(this.refreshTimer);
+        this.refreshTimer = setTimeout(async () => {
+          await this.load(false);
+          this.scheduleRefresh();
+        }, delay);
       },
       async failureMessage(response, fallback) {
         try {
@@ -192,12 +248,59 @@
       },
       async load(showErrors = true) {
         if (!this.hasOrg) return;
-        const response = await fetch("/admin/overview", { credentials: "include" });
-        if (!response.ok) {
-          if (showErrors) this.pageMessage = await this.failureMessage(response, `Could not refresh dashboard (${response.status}).`);
-          return;
+        if (this.loading) return;
+        this.loading = true;
+        try {
+          const response = await fetch("/admin/overview", { credentials: "include" });
+          if (!response.ok) {
+            this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
+            if (showErrors) this.pageMessage = await this.failureMessage(response, `Could not refresh dashboard (${response.status}).`);
+            return;
+          }
+          this.overview = await response.json();
+          this.refreshDelayMs = 5000;
+        } catch {
+          this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
+          if (showErrors) this.pageMessage = "Connection interrupted. Retrying automatically.";
+        } finally {
+          this.loading = false;
         }
-        this.overview = await response.json();
+      },
+      chartDays() {
+        return [...this.trend].reverse();
+      },
+      chartBars() {
+        const days = this.chartDays();
+        if (days.length === 0) return [];
+        const maxEscalations = Math.max(1, ...days.map((day) => Number(day.escalations || 0)));
+        const width = 700 / days.length;
+        return days.map((day, index) => {
+          const height = Math.max(2, (Number(day.escalations || 0) / maxEscalations) * 120);
+          return {
+            label: day.date,
+            x: index * width + width * 0.28,
+            y: 180 - height,
+            width: width * 0.44,
+            height,
+          };
+        });
+      },
+      chartDots() {
+        const days = this.chartDays();
+        if (days.length === 0) return [];
+        const width = days.length === 1 ? 0 : 700 / (days.length - 1);
+        return days.map((day, index) => {
+          const autonomy = Number(day.autonomy_value ?? String(day.autonomy || "0").replace("%", "")) || 0;
+          return {
+            label: day.date,
+            autonomy: Math.round(autonomy),
+            x: days.length === 1 ? 350 : index * width,
+            y: 180 - (autonomy / 100) * 150,
+          };
+        });
+      },
+      chartPoints() {
+        return this.chartDots().map((point) => `${point.x},${point.y}`).join(" ");
       },
       async scanSuggestions() {
         if (!this.hasOrg || this.scanning) return;
@@ -211,11 +314,13 @@
         this.scanning = false;
         if (!response.ok) {
           this.scanMessage = await this.failureMessage(response, `Scan failed (${response.status}).`);
+          window.signalToast(this.scanMessage, "error");
           return;
         }
         const result = await response.json();
         await this.load(false);
         this.scanMessage = `Scan complete. Checked ${result.pairs_checked || 0} pairs and created ${result.suggestions_created || 0} suggestion${(result.suggestions_created || 0) === 1 ? "" : "s"}.`;
+        window.signalToast(this.scanMessage, "success");
       },
       async acceptSuggestion(suggestionId) {
         if (!this.hasOrg) {
@@ -228,10 +333,12 @@
         });
         if (!response.ok) {
           this.suggestionMessage = await this.failureMessage(response, `Accept failed (${response.status}).`);
+          window.signalToast(this.suggestionMessage, "error");
           return;
         }
         await this.load(false);
         this.suggestionMessage = "Suggestion accepted. The original rules were archived and the merged rule is active.";
+        window.signalToast("Suggestion accepted.", "success");
       },
       async dismissSuggestion(suggestionId) {
         if (!this.hasOrg) {
@@ -244,10 +351,12 @@
         });
         if (!response.ok) {
           this.suggestionMessage = await this.failureMessage(response, `Decline failed (${response.status}).`);
+          window.signalToast(this.suggestionMessage, "error");
           return;
         }
         await this.load(false);
         this.suggestionMessage = "Suggestion declined.";
+        window.signalToast("Suggestion declined.", "success");
       },
     };
   }

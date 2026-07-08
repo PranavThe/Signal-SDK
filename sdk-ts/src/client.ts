@@ -7,7 +7,7 @@ export interface SignalOptions {
 }
 
 export interface EscalateParams {
-  context: string;
+  context: string | Record<string, unknown>;
   question: string;
   agentId: string;
   action?: string;
@@ -33,6 +33,7 @@ export interface CheckResult {
   ruleId: string | null;
   reasoning: string;
   modification: Record<string, unknown> | null;
+  contextWarnings: string[];
 }
 
 type EscalationState = {
@@ -45,6 +46,66 @@ type EscalationState = {
   finalized?: boolean;
   finalization_reason?: string | null;
 };
+
+const personScalarFields = new Set([
+  "actor",
+  "approver",
+  "author",
+  "creator",
+  "owner",
+  "requester",
+  "reviewer",
+  "submitter",
+  "user",
+]);
+
+export function canonicalizeFieldName(field: string): string {
+  return String(field ?? "")
+    .trim()
+    .replace(/(?<=[a-z0-9])(?=[A-Z])/g, ".")
+    .replace(/[^a-zA-Z0-9]+/g, ".")
+    .replace(/\.+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
+    .toLowerCase();
+}
+
+function canonicalizeScalarField(field: string): string {
+  const canonical = canonicalizeFieldName(field);
+  if (personScalarFields.has(canonical)) return `${canonical}.name`;
+  return canonical;
+}
+
+export function normalizeContext(context: Record<string, unknown>): {
+  normalizedContext: Record<string, unknown>;
+  warnings: string[];
+} {
+  const normalizedContext: Record<string, unknown> = {};
+  const warnings: string[] = [];
+
+  const visit = (value: unknown, prefix = ""): void => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      for (const [rawKey, child] of Object.entries(value as Record<string, unknown>)) {
+        const key = canonicalizeFieldName(rawKey);
+        const path = prefix ? `${prefix}.${key}` : key;
+        visit(child, path);
+      }
+      return;
+    }
+
+    const field = canonicalizeScalarField(prefix);
+    if (!field) return;
+    if (Object.prototype.hasOwnProperty.call(normalizedContext, field) && normalizedContext[field] !== value) {
+      warnings.push(`Multiple values mapped to canonical field '${field}'.`);
+    }
+    normalizedContext[field] = value;
+    if (field !== prefix) {
+      warnings.push(`Normalized context field '${prefix}' to '${field}'.`);
+    }
+  };
+
+  visit(context ?? {});
+  return { normalizedContext, warnings };
+}
 
 export class Signal {
   private readonly apiKey: string;
@@ -59,16 +120,26 @@ export class Signal {
     const timeoutSeconds = params.timeoutSeconds ?? 3600;
     const pollIntervalSeconds = params.pollIntervalSeconds ?? 3;
     const deadline = Date.now() + timeoutSeconds * 1000;
+    let outboundContext = params.context;
+    const outboundMetadata = { ...(params.metadata ?? {}) };
+    if (params.context && typeof params.context === "object") {
+      const { normalizedContext, warnings } = normalizeContext(params.context);
+      outboundContext = JSON.stringify(normalizedContext);
+      outboundMetadata._signal_raw_context ??= params.context;
+      if (warnings.length > 0) {
+        outboundMetadata._signal_context_warnings ??= warnings;
+      }
+    }
 
     const response = await fetch(`${this.baseUrl}/v1/escalations`, {
       method: "POST",
       headers: this.jsonHeaders(),
       body: JSON.stringify({
-        context: params.context,
+        context: outboundContext,
         question: params.question,
         agent_id: params.agentId,
         action: params.action ?? null,
-        metadata: params.metadata ?? {},
+        metadata: outboundMetadata,
       }),
     });
     await this.assertOk(response);
@@ -82,13 +153,14 @@ export class Signal {
   }
 
   async check(params: CheckParams): Promise<CheckResult> {
+    const { normalizedContext, warnings } = normalizeContext(params.context);
     const response = await fetch(`${this.baseUrl}/v1/check`, {
       method: "POST",
       headers: this.jsonHeaders(),
       body: JSON.stringify({
         action: params.action,
         agent_id: params.agentId,
-        context: params.context,
+        context: normalizedContext,
       }),
     });
     await this.assertOk(response);
@@ -97,12 +169,14 @@ export class Signal {
       rule_id: string | null;
       reasoning: string;
       modification: Record<string, unknown> | null;
+      context_warnings?: string[];
     };
     return {
       result: data.result,
       ruleId: data.rule_id,
       reasoning: data.reasoning,
       modification: data.modification,
+      contextWarnings: [...warnings, ...(data.context_warnings ?? [])],
     };
   }
 

@@ -6,7 +6,7 @@ from api.database import AsyncSessionLocal
 from api.config import settings
 from api.models import Escalation, Organization
 from api.services.embedding_service import embed, save_escalation_embedding
-from api.services.semantic_service import find_similar_escalations
+from api.services.semantic_service import find_similar_escalations, semantic_escalation_text
 from api.services.slack_service import SlackService
 
 
@@ -29,7 +29,11 @@ async def prepare_escalation_semantics(escalation_id: str, *, raise_errors: bool
 
         try:
             if escalation.context_embedding is None:
-                embedding = await embed(escalation.context)
+                embedding_text = semantic_escalation_text(
+                    escalation.context,
+                    escalation.normalized_context or escalation.metadata_,
+                )
+                embedding = await embed(embedding_text)
                 await save_escalation_embedding(session, str(escalation.id), embedding)
                 await session.commit()
             else:

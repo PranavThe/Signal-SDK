@@ -11,32 +11,79 @@
   </head>
   <body class="overflow-x-hidden bg-white text-stone-950 antialiased">
     <div class="min-h-screen lg:flex">
-      <aside class="border-b border-stone-200 lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-64 lg:flex-col lg:border-b-0 lg:border-r">
+      <aside
+        x-data='dashboardShell({
+          orgName: {{ (current_org.org_name if current_org else "")|tojson }},
+          orgId: {{ (current_org.org_id|string if current_org else "")|tojson }},
+          navScope: {{ nav_scope|tojson }}
+        })'
+        x-init="init()"
+        class="border-b border-stone-200 lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-64 lg:flex-col lg:border-b-0 lg:border-r"
+      >
         <div class="flex h-16 items-start justify-start px-5 pt-4 lg:h-20 lg:pt-5">
           <a href="/dashboard" class="block">
             <img src="/static/signal-logo.png" alt="Signal" class="h-8 w-auto max-w-[148px] object-contain object-left" style="filter: invert(1);" />
           </a>
         </div>
+        {% if nav_scope == 'org' %}
+        <div class="px-5 pb-4">
+          <button @click="toggleOrgMenu()" class="w-full border-y border-stone-200 py-3 text-left">
+            <span class="block text-xs font-semibold uppercase tracking-wide text-stone-500">Organization</span>
+            <span class="mt-1 flex items-center justify-between gap-3">
+              <span class="truncate text-sm font-semibold text-stone-950" x-text="orgName || 'Select organization'"></span>
+              <span class="text-stone-400">⌄</span>
+            </span>
+          </button>
+          <div x-show="orgMenuOpen" x-cloak @click.outside="orgMenuOpen = false" class="mt-2 border-y border-stone-200 py-2">
+            <template x-for="org in organizations" :key="org.id">
+              <button @click="switchOrg(org)" class="flex w-full items-center justify-between gap-3 px-1 py-2 text-left text-sm hover:text-stone-950" :class="org.id === orgId ? 'font-semibold text-stone-950' : 'text-stone-500'">
+                <span class="truncate" x-text="org.name"></span>
+                <span x-show="org.id === orgId" class="text-xs text-stone-400">Current</span>
+              </button>
+            </template>
+            <a href="/dashboard" class="mt-2 block border-t border-stone-100 px-1 pt-3 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Manage organizations</a>
+          </div>
+        </div>
+        {% endif %}
         <nav class="flex gap-5 overflow-x-auto px-5 pb-4 lg:block lg:flex-1 lg:space-y-1 lg:overflow-visible">
           {% if nav_scope == 'org' %}
           <a href="/dashboard" class="block border-l-0 py-2 text-sm font-medium text-stone-500 hover:text-stone-950 lg:border-l-2 lg:border-transparent lg:pl-3">Organizations</a>
           <div class="hidden py-2 lg:block"></div>
-          <a href="/dashboard/overview" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'overview' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Overview</a>
-          <a href="/dashboard/review" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'review' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Review</a>
-          <a href="/dashboard/rules" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'rules' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Rules</a>
-          <a href="/dashboard/escalations" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'escalations' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Escalations</a>
+          <a href="/dashboard/overview" class="flex items-center justify-between gap-3 border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'overview' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">
+            <span>Overview</span>
+          </a>
+          <a href="/dashboard/review" class="flex items-center justify-between gap-3 border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'review' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">
+            <span>Review</span>
+            <span x-show="badgeCount('review') > 0" x-text="badgeCount('review')" x-cloak class="min-w-5 rounded-full bg-stone-950 px-1.5 py-0.5 text-center text-xs font-semibold text-white"></span>
+          </a>
+          <a href="/dashboard/activity" class="flex items-center justify-between gap-3 border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'activity' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">
+            <span>Activity</span>
+          </a>
+          <a href="/dashboard/context" class="flex items-center justify-between gap-3 border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'context' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">
+            <span>Context Schema</span>
+          </a>
+          <a href="/dashboard/training" class="flex items-center justify-between gap-3 border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'training' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">
+            <span>Training Data</span>
+          </a>
+          <a href="/dashboard/rules" class="flex items-center justify-between gap-3 border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'rules' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">
+            <span>Rules</span>
+            <span x-show="badgeCount('rules') > 0" x-text="badgeCount('rules')" x-cloak class="min-w-5 rounded-full bg-amber-600 px-1.5 py-0.5 text-center text-xs font-semibold text-white"></span>
+          </a>
+          <a href="/dashboard/escalations" class="flex items-center justify-between gap-3 border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'escalations' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">
+            <span>Escalations</span>
+            <span x-show="badgeCount('escalations') > 0" x-text="badgeCount('escalations')" x-cloak class="min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-xs font-semibold text-white"></span>
+          </a>
           <a href="/dashboard/settings" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'settings' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Organization Settings</a>
           {% else %}
           <a href="/dashboard" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'organizations' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Organizations</a>
           <a href="/dashboard/account" class="block border-l-0 py-2 text-sm font-medium lg:border-l-2 lg:pl-3 {% if active_nav == 'account_settings' %}border-stone-950 text-stone-950{% else %}border-transparent text-stone-500 hover:text-stone-950{% endif %}">Account Settings</a>
           {% endif %}
         </nav>
-        <div x-data="dashboardShell('{{ current_org.org_name if current_org else '' }}')" x-init="init()" class="hidden border-t border-stone-200 px-5 py-4 lg:block">
+        <div class="hidden border-t border-stone-200 px-5 py-4 lg:block">
           <div class="space-y-2 text-sm">
             <p class="text-stone-500">{{ dashboard_user.email if dashboard_user else '' }}</p>
             {% if nav_scope == 'org' %}
-            <a href="/dashboard" class="block font-semibold text-stone-950 underline-offset-4 hover:underline" x-show="orgName" x-text="orgName"></a>
-            <a href="/dashboard" class="block font-semibold text-stone-500 underline-offset-4 hover:underline" x-show="!orgName">Select organization</a>
+            <a href="/dashboard/settings" class="block font-semibold text-stone-950 underline-offset-4 hover:underline">Organization settings</a>
             {% else %}
             <a href="/dashboard/account" class="block font-semibold text-stone-950 underline-offset-4 hover:underline">Account</a>
             {% endif %}
@@ -48,26 +95,141 @@
       <main class="min-w-0 lg:ml-64 lg:flex-1">
         <div class="mx-auto min-w-0 max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           {% if nav_scope == 'org' %}
-          <div class="mb-6 flex justify-end">
+          <nav class="mb-6 flex flex-wrap items-center gap-2 text-sm text-stone-500">
             {% if current_org %}
-            <a href="/dashboard" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">{{ current_org.org_name }}</a>
+            <a href="/dashboard" class="font-semibold text-stone-950 underline-offset-4 hover:underline">{{ current_org.org_name }}</a>
+            <span>/</span>
+            <span class="capitalize">{{ active_nav|replace('_', ' ') }}</span>
             {% else %}
-            <a href="/dashboard" class="text-sm font-semibold text-stone-500 underline-offset-4 hover:underline">Select organization</a>
+            <a href="/dashboard" class="font-semibold text-stone-500 underline-offset-4 hover:underline">Select organization</a>
             {% endif %}
-          </div>
+          </nav>
           {% endif %}
           {% block content %}{% endblock %}
         </div>
       </main>
     </div>
+    <div x-data="toastCenter()" x-init="init()" class="fixed bottom-4 right-4 z-[70] w-[min(24rem,calc(100vw-2rem))] space-y-2">
+      <template x-for="toast in toasts" :key="toast.id">
+        <div
+          x-show="toast.visible"
+          x-transition
+          class="border bg-white px-4 py-3 text-sm shadow-lg"
+          :class="toast.type === 'success' ? 'border-emerald-300 text-emerald-800' : toast.type === 'error' ? 'border-red-300 text-red-800' : 'border-stone-300 text-stone-700'"
+        >
+          <div class="flex items-start justify-between gap-4">
+            <p x-text="toast.message"></p>
+            <button @click="dismiss(toast.id)" class="text-stone-400 hover:text-stone-950">×</button>
+          </div>
+        </div>
+      </template>
+    </div>
+
     <script>
-      function dashboardShell(initialOrgName) {
+      window.signalToast = function(message, type = "info") {
+        window.dispatchEvent(new CustomEvent("signal-toast", { detail: { message, type } }));
+      };
+
+      function toastCenter() {
         return {
-          orgName: initialOrgName || sessionStorage.getItem("signal_org_name") || "",
+          toasts: [],
+          init() {
+            if (window.__signalToastUnsubscribe) window.__signalToastUnsubscribe();
+            const handler = (event) => {
+              const toast = {
+                id: Date.now() + Math.random(),
+                message: event.detail?.message || "Done.",
+                type: event.detail?.type || "info",
+                visible: true,
+              };
+              this.toasts.push(toast);
+              setTimeout(() => this.dismiss(toast.id), 4200);
+            };
+            window.addEventListener("signal-toast", handler);
+            window.__signalToastUnsubscribe = () => window.removeEventListener("signal-toast", handler);
+          },
+          dismiss(id) {
+            this.toasts = this.toasts.filter((toast) => toast.id !== id);
+          },
+        };
+      }
+
+      function dashboardShell(initialState) {
+        return {
+          orgName: initialState.orgName || sessionStorage.getItem("signal_org_name") || "",
+          orgId: initialState.orgId || "",
+          navScope: initialState.navScope || "account",
+          orgMenuOpen: false,
+          organizations: [],
+          summary: { totals: {} },
+          summaryTimer: null,
           init() {
             window.addEventListener("signal-org-changed", (event) => {
               if (event.detail?.name) this.orgName = event.detail.name;
+              if (event.detail?.id) this.orgId = event.detail.id;
             });
+            if (this.navScope === "org") {
+              this.loadOrganizations();
+              this.loadSummary();
+              this.summaryTimer = setInterval(() => this.loadSummary(true), 10000);
+              window.addEventListener("beforeunload", () => {
+                if (this.summaryTimer) clearInterval(this.summaryTimer);
+              });
+            }
+          },
+          async toggleOrgMenu() {
+            this.orgMenuOpen = !this.orgMenuOpen;
+            if (this.orgMenuOpen) await this.loadOrganizations(true);
+          },
+          async loadOrganizations(silent = false) {
+            try {
+              const response = await fetch("/admin/settings", { credentials: "include" });
+              if (!response.ok) {
+                if (!silent && response.status === 401) window.signalToast("Your session expired. Sign in again to continue.", "error");
+                return;
+              }
+              const data = await response.json();
+              this.organizations = data.organizations || [];
+              const selected = this.organizations.find((org) => org.selected);
+              if (selected) {
+                this.orgName = selected.name;
+                this.orgId = selected.id;
+                window.signalRememberOrg(selected);
+              }
+            } catch {
+              if (!silent) window.signalToast("Could not load organizations.", "error");
+            }
+          },
+          async switchOrg(org) {
+            if (!org?.id || org.id === this.orgId) {
+              this.orgMenuOpen = false;
+              return;
+            }
+            const selected = await window.signalSelectOrg(org.id, { by: "org_id", reload: false });
+            if (!selected) {
+              window.signalToast("Could not switch organizations.", "error");
+              return;
+            }
+            window.location.href = "/dashboard/overview";
+          },
+          async loadSummary(silent = false) {
+            try {
+              const response = await fetch("/admin/summary", { credentials: "include" });
+              if (!response.ok) {
+                if (!silent && response.status === 401) window.signalToast("Your session expired. Sign in again to continue.", "error");
+                return;
+              }
+              this.summary = await response.json();
+            } catch {
+              if (!silent) window.signalToast("Could not refresh navigation badges.", "error");
+            }
+          },
+          badgeCount(kind) {
+            const totals = this.summary?.totals || {};
+            if (kind === "review") return (totals.pending_escalations || 0) + (totals.pending_rules || 0);
+            if (kind === "rules") return totals.pending_rules || 0;
+            if (kind === "escalations") return totals.pending_escalations || 0;
+            return 0;
           },
           async logout() {
             await fetch("/dashboard/logout", { method: "POST", credentials: "include" });
@@ -100,7 +262,7 @@
     </script>
 
     <!-- Feedback Widget -->
-    <div x-data="feedbackWidget()" class="fixed bottom-4 right-4 z-50">
+    <div x-data="feedbackWidget()" class="fixed right-4 top-20 z-50 lg:top-4">
       <!-- Feedback Button -->
       <button @click="showModal = true" class="rounded-full bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white shadow-lg hover:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-950 focus:ring-offset-2">
         Share Feedback

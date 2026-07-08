@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.models import ConsolidationSuggestion, Escalation, Organization, Rule, RuleConflict
 from api.services.conflict_service import ConflictService, ConflictWarning
+from api.services.context_schema_service import ContextSchemaService
 from api.services.embedding_service import embed, save_rule_embedding
 from api.services.escalation_pipeline import slack_delivery_available
 from api.services.extraction_service import ExtractionService
@@ -160,11 +161,18 @@ async def create_rule_from_escalation(
 
     escalation.apply_broadly = True
     extracted = await ExtractionService().extract_rule(escalation)
+    structured_conditions, _ = await ContextSchemaService().canonicalize_conditions(
+        session,
+        escalation.org_id,
+        extracted.structured_conditions,
+        learn=True,
+        source="rule_extraction",
+    )
     rule = Rule(
         condition_description=extracted.condition_description,
         action_description=extracted.action_description,
         exceptions_note=extracted.exceptions_note,
-        structured_conditions=extracted.structured_conditions,
+        structured_conditions=structured_conditions,
         structured_action=extracted.structured_action,
         agent_scope=[],
         extraction_confidence=extracted.confidence,
@@ -254,10 +262,17 @@ async def revise_rule(
         raise ValueError("This rule is missing its source escalation.")
 
     revised = await ExtractionService().revise_rule(escalation, rule, edit_text.strip())
+    structured_conditions, _ = await ContextSchemaService().canonicalize_conditions(
+        session,
+        rule.org_id,
+        revised.structured_conditions,
+        learn=True,
+        source="rule_revision",
+    )
     rule.condition_description = revised.condition_description
     rule.action_description = revised.action_description
     rule.exceptions_note = revised.exceptions_note
-    rule.structured_conditions = revised.structured_conditions
+    rule.structured_conditions = structured_conditions
     rule.structured_action = revised.structured_action
     rule.extraction_confidence = revised.confidence
     rule.status = "pending_approval"

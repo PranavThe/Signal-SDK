@@ -20,6 +20,7 @@ from api.config import settings
 from api.database import AsyncSessionLocal
 from api.models import ConsolidationSuggestion, Escalation, Rule, RuleConflict, RuleVersion
 from api.services.conflict_service import ConflictService
+from api.services.context_schema_service import ContextSchemaService
 from api.services.embedding_service import embed, save_rule_embedding
 from api.services.extraction_service import ExtractionService
 from api.services.lifecycle_service import run_consolidation
@@ -257,11 +258,18 @@ async def process_slack_action(action_id: str, value: str) -> None:
                 escalation = await _get_escalation(session, value)
                 escalation.apply_broadly = True
                 extracted = await ExtractionService().extract_rule(escalation)
+                structured_conditions, _ = await ContextSchemaService().canonicalize_conditions(
+                    session,
+                    escalation.org_id,
+                    extracted.structured_conditions,
+                    learn=True,
+                    source="rule_extraction",
+                )
                 rule = Rule(
                     condition_description=extracted.condition_description,
                     action_description=extracted.action_description,
                     exceptions_note=extracted.exceptions_note,
-                    structured_conditions=extracted.structured_conditions,
+                    structured_conditions=structured_conditions,
                     structured_action=extracted.structured_action,
                     agent_scope=[],
                     extraction_confidence=extracted.confidence,
@@ -389,10 +397,17 @@ async def process_rule_edit_submission(rule_id: str, edit_text: str) -> None:
             await _save_rule_version(session, rule, f"Edited via Slack modal: {edit_text[:100]}")
 
             revised = await ExtractionService().revise_rule(escalation, rule, edit_text)
+            structured_conditions, _ = await ContextSchemaService().canonicalize_conditions(
+                session,
+                rule.org_id,
+                revised.structured_conditions,
+                learn=True,
+                source="rule_revision",
+            )
             rule.condition_description = revised.condition_description
             rule.action_description = revised.action_description
             rule.exceptions_note = revised.exceptions_note
-            rule.structured_conditions = revised.structured_conditions
+            rule.structured_conditions = structured_conditions
             rule.structured_action = revised.structured_action
             rule.extraction_confidence = revised.confidence
             # Set to pending_approval to require re-approval (even if it was previously active)
@@ -470,10 +485,17 @@ async def process_slack_message_event(event: dict) -> None:
             await _save_rule_version(session, rule, f"Edited via Slack thread: {edit_text[:100]}")
 
             revised = await ExtractionService().revise_rule(escalation, rule, edit_text)
+            structured_conditions, _ = await ContextSchemaService().canonicalize_conditions(
+                session,
+                rule.org_id,
+                revised.structured_conditions,
+                learn=True,
+                source="rule_revision",
+            )
             rule.condition_description = revised.condition_description
             rule.action_description = revised.action_description
             rule.exceptions_note = revised.exceptions_note
-            rule.structured_conditions = revised.structured_conditions
+            rule.structured_conditions = structured_conditions
             rule.structured_action = revised.structured_action
             rule.extraction_confidence = revised.confidence
             # Set to pending_approval to require re-approval

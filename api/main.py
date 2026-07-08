@@ -12,7 +12,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from api.config import settings
 from api.rate_limit import limiter
-from api.routers import admin, check, escalations, lifecycle, rules, slack
+from api.routers import admin, check, context, escalations, lifecycle, rules, slack
 from api.services.lifecycle_service import run_consolidation, run_staleness_check
 
 
@@ -32,6 +32,7 @@ templates = Jinja2Templates(directory="api/templates")
 app.include_router(escalations.router)
 app.include_router(check.router)
 app.include_router(rules.router)
+app.include_router(context.router)
 app.include_router(lifecycle.router)
 app.include_router(slack.router)
 app.include_router(admin.router)

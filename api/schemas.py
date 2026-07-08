@@ -83,6 +83,7 @@ class CheckResponse(BaseModel):
     rule_id: UUID | None
     reasoning: str
     modification: dict[str, Any] | None = None
+    context_warnings: list[str] = Field(default_factory=list)
 
 
 class ExtractedRule(BaseModel):

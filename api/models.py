@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func, text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
@@ -150,6 +150,56 @@ class ApiKey(Base):
     organization: Mapped[Organization] = relationship("Organization", back_populates="api_keys")
 
 
+class ContextField(Base):
+    __tablename__ = "context_fields"
+    __table_args__ = (
+        UniqueConstraint("org_id", "canonical_name", name="uq_context_fields_org_canonical"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    canonical_name: Mapped[str] = mapped_column(Text, nullable=False)
+    field_type: Mapped[str] = mapped_column(Text, nullable=False, default="unknown", server_default="unknown")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    sample_values: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    aliases: Mapped[list["ContextFieldAlias"]] = relationship("ContextFieldAlias", back_populates="field")
+
+
+class ContextFieldAlias(Base):
+    __tablename__ = "context_field_aliases"
+    __table_args__ = (
+        UniqueConstraint("org_id", "alias", name="uq_context_field_aliases_org_alias"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    field_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("context_fields.id"), nullable=False)
+    alias: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False, default="observed", server_default="observed")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    field: Mapped[ContextField] = relationship("ContextField", back_populates="aliases")
+
+
 class Escalation(Base):
     __tablename__ = "escalations"
 
@@ -163,6 +213,12 @@ class Escalation(Base):
     question: Mapped[str] = mapped_column(Text, nullable=False)
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+    normalized_context: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
         default=dict,
@@ -269,6 +325,12 @@ class PolicyCheckLog(Base):
     agent_id: Mapped[str] = mapped_column(Text, nullable=False)
     action: Mapped[str] = mapped_column(Text, nullable=False)
     context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    normalized_context: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
     result: Mapped[str] = mapped_column(Text, nullable=False)
     org_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"))
     rule_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("rules.id"))
@@ -375,6 +437,48 @@ class RuleVersion(Base):
     )
 
     rule: Mapped[Rule] = relationship("Rule", foreign_keys=[rule_id])
+
+
+class HistoricalDecisionImport(Base):
+    __tablename__ = "historical_decision_imports"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(Text, nullable=False, default="historical-decisions", server_default="historical-decisions")
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="completed", server_default="completed")
+    rows_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    fields_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    proposals_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class HistoricalRuleProposal(Base):
+    __tablename__ = "historical_rule_proposals"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    import_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("historical_decision_imports.id"))
+    condition_description: Mapped[str] = mapped_column(Text, nullable=False)
+    action_description: Mapped[str] = mapped_column(Text, nullable=False)
+    exceptions_note: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    structured_conditions: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    structured_action: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0.0")
+    evidence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending", server_default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class Feedback(Base):

@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+
+{% block title %}Signal Training Data{% endblock %}
+
+{% block content %}
+<div x-data="trainingData()" x-init="init()" class="mx-auto max-w-5xl space-y-8">
+  <header class="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+    <div>
+      <p class="text-sm font-medium text-stone-500">Training</p>
+      <h1 class="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Training data</h1>
+    </div>
+    <button x-show="!isEmpty()" x-cloak @click="uploadOpen = !uploadOpen; importMessage = ''" class="border border-stone-950 bg-stone-950 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-stone-800" x-text="uploadOpen ? 'Close upload' : 'Upload judgments'"></button>
+  </header>
+
+  <p x-show="message" x-text="message" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+
+  <section x-show="loading" x-cloak class="border border-stone-200 p-6">
+    <p class="text-sm text-stone-500">Loading training data...</p>
+  </section>
+
+  <section x-show="!loading && isEmpty()" x-cloak class="border border-stone-200 p-6 sm:p-8">
+    <div class="grid gap-8 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1fr)] lg:items-start">
+      <div>
+        <p class="text-sm font-semibold text-stone-500">No training data yet</p>
+        <h2 class="mt-2 text-2xl font-semibold tracking-tight text-stone-950">Teach Signal from past decisions.</h2>
+        <p class="mt-3 text-sm leading-6 text-stone-600">Upload past approve/reject judgments and Signal will propose rules your agent can follow. You review every rule before it becomes active.</p>
+        <div class="mt-6 grid gap-3 text-sm text-stone-600">
+          <div class="flex gap-3">
+            <span class="font-semibold text-stone-950">1.</span>
+            <span>Upload judgments</span>
+          </div>
+          <div class="flex gap-3">
+            <span class="font-semibold text-stone-950">2.</span>
+            <span>Signal generates rule proposals</span>
+          </div>
+          <div class="flex gap-3">
+            <span class="font-semibold text-stone-950">3.</span>
+            <span>You review and activate</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="border border-stone-200 p-5">
+        <h3 class="font-semibold">Upload JSON or CSV</h3>
+        <p class="mt-1 text-sm text-stone-500">Include context columns and a decision column.</p>
+        <label class="mt-5 flex min-h-36 cursor-pointer flex-col items-center justify-center border border-dashed border-stone-300 p-6 text-center transition hover:border-stone-950">
+          <input type="file" accept=".json,.csv" @change="handleFile($event)" class="sr-only" />
+          <span class="text-sm font-semibold text-stone-950" x-text="historyFile ? historyFile.name : 'Choose a file'"></span>
+          <span class="mt-1 text-sm text-stone-500" x-text="previewRows !== null ? `${previewRows} rows detected` : 'CSV or JSON, up to 1000 rows per import'"></span>
+        </label>
+        <div class="mt-4 flex flex-wrap items-center gap-4">
+          <button @click="importHistory()" :disabled="!historyFile || importing" class="border border-stone-950 bg-stone-950 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400" x-text="importing ? 'Importing...' : 'Import and analyze'"></button>
+          <button @click="downloadSample('csv')" class="text-sm font-semibold text-stone-500 underline-offset-4 hover:text-stone-950 hover:underline">Sample CSV</button>
+          <button @click="downloadSample('json')" class="text-sm font-semibold text-stone-500 underline-offset-4 hover:text-stone-950 hover:underline">Sample JSON</button>
+        </div>
+        <p x-show="importMessage" x-text="importMessage" x-cloak class="mt-4 border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+      </div>
+    </div>
+  </section>
+
+  <section x-show="!loading && !isEmpty()" x-cloak class="grid gap-4 md:grid-cols-3">
+    <div class="border border-stone-200 p-5">
+      <p class="text-sm text-stone-500">Imports</p>
+      <p class="mt-3 text-2xl font-semibold text-stone-950" x-text="imports.length"></p>
+    </div>
+    <div class="border border-stone-200 p-5">
+      <p class="text-sm text-stone-500">Pending proposals</p>
+      <p class="mt-3 text-2xl font-semibold text-stone-950" x-text="proposals.length"></p>
+    </div>
+    <div class="border border-stone-200 p-5">
+      <p class="text-sm text-stone-500">Generated proposals</p>
+      <p class="mt-3 text-2xl font-semibold text-stone-950" x-text="proposalTotal()"></p>
+    </div>
+  </section>
+
+  <section x-show="uploadOpen && !isEmpty()" x-cloak class="border border-stone-200 p-6">
+    <div class="grid gap-5 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)]">
+      <div>
+        <h2 class="font-semibold">Upload judgments</h2>
+        <p class="mt-1 text-sm leading-6 text-stone-500">Use JSON or CSV with a decision column.</p>
+        <div class="mt-3 flex gap-4">
+          <button @click="downloadSample('csv')" class="text-sm font-semibold text-stone-500 underline-offset-4 hover:text-stone-950 hover:underline">Sample CSV</button>
+          <button @click="downloadSample('json')" class="text-sm font-semibold text-stone-500 underline-offset-4 hover:text-stone-950 hover:underline">Sample JSON</button>
+        </div>
+      </div>
+      <div>
+        <input type="file" accept=".json,.csv" @change="handleFile($event)" class="w-full border border-stone-300 px-3 py-2 text-sm" />
+        <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-500">
+          <span x-show="historyFile" x-cloak><span class="font-semibold text-stone-950" x-text="historyFile?.name"></span></span>
+          <span x-show="previewRows !== null" x-cloak x-text="`${previewRows} rows`"></span>
+        </div>
+        <div class="mt-4 flex items-center gap-4">
+          <button @click="importHistory()" :disabled="!historyFile || importing" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300" x-text="importing ? 'Importing...' : 'Import and analyze'"></button>
+          <p x-show="importMessage" x-text="importMessage" x-cloak class="text-sm text-stone-600"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section x-show="!loading && !isEmpty()" x-cloak class="border border-stone-200 p-6">
+    <div class="flex items-center justify-between gap-4 pb-4">
+      <div>
+        <h2 class="font-semibold">Rule proposals</h2>
+        <p class="mt-1 text-sm text-stone-500">Review generated rules before activating them.</p>
+      </div>
+      <span class="text-sm text-stone-500" x-text="`${proposals.length} pending`"></span>
+    </div>
+
+    <div class="divide-y divide-stone-100 border-y border-stone-200">
+      <template x-for="proposal in proposals" :key="proposal.id">
+        <article class="py-4">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+              <p class="text-xs font-semibold uppercase tracking-wide text-stone-500" x-text="`${Math.round((proposal.confidence || 0) * 100)}% confidence · ${proposal.evidence_count} examples`"></p>
+              <p class="mt-2 text-sm font-semibold leading-6 text-stone-950" x-text="proposal.condition_description"></p>
+              <p class="mt-1 text-sm leading-6 text-stone-600" x-text="proposal.action_description"></p>
+              <details class="mt-2">
+                <summary class="cursor-pointer text-xs font-semibold text-stone-500 underline-offset-4 hover:text-stone-950 hover:underline">Details</summary>
+                <p x-show="proposal.exceptions_note" class="mt-3 text-sm leading-6 text-stone-500" x-text="'Exceptions: ' + proposal.exceptions_note"></p>
+                <pre class="mt-3 max-h-64 overflow-auto border-y border-stone-200 py-3 text-xs text-stone-600" x-text="formatJson(proposal.evidence || [])"></pre>
+              </details>
+            </div>
+            <div class="flex shrink-0 items-center gap-4">
+              <button @click="acceptProposal(proposal)" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Accept</button>
+              <button @click="dismissProposal(proposal)" class="text-sm font-semibold text-stone-500 underline-offset-4 hover:text-stone-950 hover:underline">Dismiss</button>
+            </div>
+          </div>
+        </article>
+      </template>
+      <p x-show="proposals.length === 0" x-cloak class="py-6 text-sm text-stone-500">No pending proposals.</p>
+    </div>
+  </section>
+
+  <details x-show="!loading && !isEmpty()" x-cloak class="border border-stone-200 p-6">
+    <summary class="cursor-pointer list-none">
+      <div class="flex items-center justify-between gap-4">
+        <h2 class="font-semibold">Import history</h2>
+        <span class="text-sm text-stone-500" x-text="`${imports.length} imports`"></span>
+      </div>
+    </summary>
+    <div class="mt-4 divide-y divide-stone-100 border-y border-stone-200">
+      <template x-for="item in imports" :key="item.id">
+        <div class="py-4">
+          <div class="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+            <p class="text-sm font-semibold text-stone-950" x-text="item.filename"></p>
+            <p class="text-sm text-stone-500" x-text="`${item.rows_count} rows · ${item.proposals_created} proposals`"></p>
+          </div>
+          <p class="mt-1 text-sm text-stone-600" x-text="item.summary"></p>
+        </div>
+      </template>
+    </div>
+  </details>
+</div>
+
+<script>
+  function trainingData() {
+    return {
+      proposals: [],
+      imports: [],
+      message: "",
+      loading: true,
+      uploadOpen: false,
+      historyFile: null,
+      previewRows: null,
+      importing: false,
+      importMessage: "",
+      init() {
+        this.load(true);
+      },
+      isEmpty() {
+        return this.proposals.length === 0 && this.imports.length === 0;
+      },
+      proposalTotal() {
+        return this.imports.reduce((total, item) => total + Number(item.proposals_created || 0), 0);
+      },
+      async failureMessage(response, fallback) {
+        try {
+          const data = await response.json();
+          if (typeof data?.detail === "string") return data.detail;
+          if (data?.detail?.message) return data.detail.message;
+        } catch {}
+        return fallback;
+      },
+      async load(showErrors = false) {
+        const response = await fetch("/admin/history", { credentials: "include" });
+        this.loading = false;
+        if (!response.ok) {
+          if (showErrors) {
+            this.message = await this.failureMessage(response, `Could not load training data (${response.status}).`);
+            window.signalToast(this.message, "error");
+          }
+          return;
+        }
+        const data = await response.json();
+        this.proposals = data.proposals || [];
+        this.imports = data.imports || [];
+      },
+      formatJson(value) {
+        return JSON.stringify(value || {}, null, 2);
+      },
+      downloadSample(format) {
+        const records = [
+          { customer_tier: "gold", order_value: 189, reason: "damaged item", decision: "approve" },
+          { customer_tier: "standard", order_value: 920, reason: "late return", decision: "reject" },
+        ];
+        const content = format === "csv"
+          ? "customer_tier,order_value,reason,decision\n" + records.map((row) => `${row.customer_tier},${row.order_value},${row.reason},${row.decision}`).join("\n")
+          : JSON.stringify(records, null, 2);
+        const blob = new Blob([content], { type: format === "csv" ? "text/csv" : "application/json" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `signal-training-sample.${format}`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      },
+      async handleFile(event) {
+        this.historyFile = event.target.files[0] || null;
+        this.importMessage = "";
+        this.previewRows = null;
+        if (!this.historyFile) return;
+        try {
+          const records = await this.fileRecords();
+          this.previewRows = records.length;
+        } catch {
+          this.previewRows = null;
+        }
+      },
+      async fileRecords() {
+        const text = await this.historyFile.text();
+        if (this.historyFile.name.endsWith(".csv")) {
+          return this.parseCsv(text);
+        }
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed.records)) return parsed.records;
+        throw new Error("JSON must be an array or an object with a records array.");
+      },
+      parseCsv(text) {
+        const rows = text.trim().split(/\r?\n/).filter(Boolean);
+        if (rows.length < 2) return [];
+        const headers = this.csvLine(rows[0]);
+        return rows.slice(1).map((row) => {
+          const values = this.csvLine(row);
+          const record = {};
+          headers.forEach((header, index) => {
+            record[header] = values[index] ?? "";
+          });
+          return record;
+        });
+      },
+      csvLine(line) {
+        const values = [];
+        let current = "";
+        let quoted = false;
+        for (let index = 0; index < line.length; index += 1) {
+          const char = line[index];
+          if (char === '"' && line[index + 1] === '"') {
+            current += '"';
+            index += 1;
+          } else if (char === '"') {
+            quoted = !quoted;
+          } else if (char === "," && !quoted) {
+            values.push(current.trim());
+            current = "";
+          } else {
+            current += char;
+          }
+        }
+        values.push(current.trim());
+        return values;
+      },
+      async importHistory() {
+        if (!this.historyFile) return;
+        this.importing = true;
+        try {
+          const records = await this.fileRecords();
+          const response = await fetch("/admin/history/import", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: this.historyFile.name, records }),
+          });
+          if (!response.ok) {
+            this.importMessage = await this.failureMessage(response, `Import failed (${response.status}).`);
+            window.signalToast(this.importMessage, "error");
+            return;
+          }
+          const data = await response.json();
+          this.importMessage = data.import?.summary || "Historical judgments imported.";
+          this.historyFile = null;
+          this.previewRows = null;
+          this.uploadOpen = false;
+          window.signalToast(this.importMessage, "success");
+          await this.load(false);
+        } catch (error) {
+          this.importMessage = error.message || "Could not import that file.";
+          window.signalToast(this.importMessage, "error");
+        } finally {
+          this.importing = false;
+        }
+      },
+      async acceptProposal(proposal) {
+        const response = await fetch(`/admin/history/proposals/${proposal.id}/accept`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!response.ok) {
+          this.message = await this.failureMessage(response, `Accept failed (${response.status}).`);
+          window.signalToast(this.message, "error");
+          return;
+        }
+        window.signalToast("Derived rule accepted.", "success");
+        await this.load(false);
+      },
+      async dismissProposal(proposal) {
+        const response = await fetch(`/admin/history/proposals/${proposal.id}/dismiss`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!response.ok) {
+          this.message = await this.failureMessage(response, `Dismiss failed (${response.status}).`);
+          window.signalToast(this.message, "error");
+          return;
+        }
+        window.signalToast("Proposal dismissed.", "success");
+        await this.load(false);
+      },
+    };
+  }
+</script>
+{% endblock %}

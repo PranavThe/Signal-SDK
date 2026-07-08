@@ -3,7 +3,7 @@
 {% block title %}Signal Organization Settings{% endblock %}
 
 {% block content %}
-<div x-data="organizationSettings()" x-init="load()" class="space-y-8">
+<div x-data="organizationSettings()" x-init="load()" class="mx-auto max-w-4xl space-y-8">
   <header class="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
     <div>
       <p class="text-sm font-medium text-stone-500">Organization</p>
@@ -14,8 +14,14 @@
 
   <p x-show="pageMessage" x-text="pageMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
 
+  <template x-if="settings === null">
+    <section class="border border-stone-200 p-6">
+      <p class="text-sm text-stone-500">Loading settings...</p>
+    </section>
+  </template>
+
   <template x-if="settings && !settings.organization">
-    <section class="border-y border-stone-200 py-8">
+    <section class="border border-stone-200 p-6">
       <h2 class="font-semibold">No organization selected</h2>
       <p class="mt-2 text-sm text-stone-500">Choose an organization before changing review settings or creating API keys.</p>
       <a href="/dashboard" class="mt-5 inline-block text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Go to organizations</a>
@@ -23,118 +29,125 @@
   </template>
 
   <template x-if="settings?.organization">
-    <div class="space-y-6">
-      <section class="grid gap-4 sm:grid-cols-3">
-        <div class="border border-stone-200 p-5">
-          <p class="text-sm text-stone-500">Organization</p>
-          <p class="mt-3 text-xl font-semibold tracking-tight text-stone-950" x-text="settings.organization.name"></p>
-        </div>
-        <div class="border border-stone-200 p-5">
-          <p class="text-sm text-stone-500">Review mode</p>
-          <p class="mt-3 text-xl font-semibold tracking-tight text-stone-950" x-text="reviewMode()"></p>
-        </div>
-        <div class="border border-stone-200 p-5">
-          <p class="text-sm text-stone-500">API keys</p>
-          <p class="mt-3 text-xl font-semibold tracking-tight text-stone-950" x-text="apiKeyUsage()"></p>
+    <div class="space-y-5">
+      <section class="border border-stone-200 p-6">
+        <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+          <div>
+            <h2 class="font-semibold">Organization</h2>
+            <p class="mt-1 text-sm text-stone-500">The workspace currently open in this dashboard.</p>
+          </div>
+          <p class="text-lg font-semibold text-stone-950" x-text="settings.organization.name"></p>
         </div>
       </section>
 
-      <details open class="border-t border-stone-200 pt-5">
-        <summary class="cursor-pointer list-none">
-          <div class="flex items-start justify-between gap-4">
+      <section class="border border-stone-200 p-6">
+        <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+          <div>
+            <h2 class="font-semibold">API keys</h2>
+            <p class="mt-1 text-sm text-stone-500">Create keys for apps, environments, or agents inside this organization.</p>
+          </div>
+          <div class="flex items-center gap-4">
+            <span class="text-sm text-stone-500" x-text="apiKeyUsage()"></span>
+            <button
+              @click="newKeyOpen = !newKeyOpen; keyMessage = ''"
+              :disabled="!canCreateApiKey()"
+              :title="canCreateApiKey() ? '' : 'Upgrade your account plan to create more API keys for this organization.'"
+              class="border border-stone-950 bg-stone-950 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+              x-text="newKeyOpen ? 'Cancel' : 'Add new key'"
+            ></button>
+          </div>
+        </div>
+
+        <p x-show="settings && !canCreateApiKey()" x-cloak class="mt-4 border-l-2 border-stone-300 pl-3 text-sm text-stone-600">This organization has reached the API key limit for your account plan. Upgrade in Account Settings to add more.</p>
+        <p x-show="keyMessage" x-text="keyMessage" x-cloak class="mt-4 border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+
+        <div x-show="newKeyOpen" x-cloak class="mt-5 border-y border-stone-200 py-4">
+          <div class="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
             <div>
-              <h2 class="font-semibold">API keys</h2>
-              <p class="mt-1 text-sm text-stone-500">Create keys for apps, environments, or agents inside this organization.</p>
-            </div>
-            <span class="text-sm font-semibold text-stone-950" x-text="apiKeyUsage()"></span>
-          </div>
-        </summary>
-
-        <div class="mt-5 space-y-5">
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button @click="newKeyOpen = !newKeyOpen; keyMessage = ''" :disabled="!canCreateApiKey()" class="text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300 disabled:no-underline" x-text="newKeyOpen ? 'Cancel new key' : 'Add new key'"></button>
-            <p x-show="settings && !canCreateApiKey()" x-cloak class="text-sm text-stone-500">This organization has reached the API key limit for your account plan. Upgrade in Account Settings to add more.</p>
-          </div>
-          <p x-show="keyMessage" x-text="keyMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
-
-          <div class="divide-y divide-stone-100 border-y border-stone-200">
-            <template x-for="key in apiKeys" :key="key.id">
-              <div class="py-4">
-                <div class="flex items-start justify-between gap-4">
-                  <div class="min-w-0">
-                    <p class="text-sm font-medium text-stone-950" x-text="key.name"></p>
-                    <p class="mt-1 font-mono text-xs text-stone-500" x-text="key.key_prefix + '...'"></p>
-                  </div>
-                  <div class="shrink-0 text-right text-xs text-stone-500">
-                    <p x-text="'Created ' + formatDate(key.created_at)"></p>
-                    <p x-show="key.last_used_at" x-text="'Used ' + formatDate(key.last_used_at)"></p>
-                  </div>
-                </div>
-              </div>
-            </template>
-            <p x-show="apiKeys.length === 0" x-cloak class="py-6 text-sm text-stone-500">No API keys for this organization.</p>
-          </div>
-
-          <div x-show="newlyGeneratedKey" x-cloak class="border-l-2 border-emerald-600 pl-3">
-            <p class="text-sm font-semibold text-emerald-700">New API key created. Copy it now.</p>
-            <div class="mt-2 flex gap-3">
-              <input x-model="newlyGeneratedKey" readonly type="text" class="h-10 min-w-0 flex-1 border-b border-emerald-600 bg-transparent font-mono text-sm outline-none" />
-              <button @click="copyToClipboard(newlyGeneratedKey)" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Copy</button>
-            </div>
-          </div>
-
-          <div x-show="newKeyOpen" x-cloak class="grid gap-4 border border-stone-200 p-4 lg:grid-cols-[1fr_auto] lg:items-end">
-            <div>
-              <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="new-key-name">New key name</label>
+              <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="new-key-name">Key name</label>
               <input id="new-key-name" x-model="newKeyName" :disabled="!canCreateApiKey()" placeholder="Production" class="mt-2 h-10 w-full border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950 disabled:text-stone-400" />
             </div>
-            <button @click="generateNewKey()" :disabled="!canCreateApiKey()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300 disabled:no-underline">Create API key</button>
+            <button @click="generateNewKey()" :disabled="!canCreateApiKey()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300 disabled:no-underline">Create key</button>
           </div>
         </div>
-      </details>
 
-      <details class="border-t border-stone-200 pt-5">
-        <summary class="cursor-pointer list-none">
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <h2 class="font-semibold">Decision review</h2>
-              <p class="mt-1 text-sm text-stone-500">Choose whether humans review escalations only in Signal or also in Slack.</p>
-            </div>
-            <span class="text-sm font-semibold text-stone-950" x-text="reviewMode()"></span>
+        <div x-show="newlyGeneratedKey" x-cloak class="mt-5 border border-emerald-300 bg-emerald-50 p-4">
+          <p class="text-sm font-semibold text-emerald-800">New API key created. Copy it now.</p>
+          <div class="mt-2 flex gap-3">
+            <input x-model="newlyGeneratedKey" readonly type="text" class="h-10 min-w-0 flex-1 border-b border-emerald-600 bg-transparent font-mono text-sm outline-none" />
+            <button @click="copyToClipboard(newlyGeneratedKey)" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Copy</button>
           </div>
-        </summary>
+        </div>
 
-        <div class="mt-5 space-y-5">
-          <p x-show="reviewMessage" x-text="reviewMessage" x-cloak class="border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
-          <div class="grid gap-4 sm:grid-cols-2">
+        <div class="mt-5 divide-y divide-stone-100 border-y border-stone-200">
+          <template x-for="key in apiKeys" :key="key.id">
+            <div class="grid gap-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(180px,auto)_auto] md:items-center">
+              <div class="min-w-0">
+                <p class="text-sm font-semibold text-stone-950" x-text="key.name"></p>
+                <p class="mt-1 font-mono text-xs text-stone-500" x-text="key.key_prefix + '...'"></p>
+              </div>
+              <div class="text-sm text-stone-500">
+                <p x-text="'Created ' + formatDate(key.created_at)"></p>
+                <p x-show="key.last_used_at" x-text="'Used ' + formatDate(key.last_used_at)"></p>
+              </div>
+              <button @click="revokeApiKey(key)" class="border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:border-red-700">Revoke</button>
+            </div>
+          </template>
+          <div x-show="apiKeys.length === 0" x-cloak class="py-8">
+            <p class="text-sm text-stone-500">No API keys yet.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="border border-stone-200 p-6">
+        <div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+          <div>
+            <h2 class="font-semibold">Decision review</h2>
+            <p class="mt-1 text-sm text-stone-500">Choose where humans review escalations.</p>
+          </div>
+          <div class="inline-grid grid-cols-2 border border-stone-300 text-sm">
             <button
               @click="setSlackEnabled(false)"
-              class="border p-4 text-left transition hover:border-stone-950"
-              :class="!settings.organization.slack_notifications_enabled ? 'border-stone-950 bg-stone-50 text-stone-950' : 'border-stone-200 text-stone-500'"
-            >
-              <span class="block text-sm font-semibold">Dashboard only</span>
-              <span class="mt-1 block text-sm">Keep all review work inside the dashboard.</span>
-            </button>
+              class="px-4 py-2 font-semibold transition"
+              :class="!settings.organization.slack_notifications_enabled ? 'bg-stone-950 text-white' : 'bg-white text-stone-500 hover:text-stone-950'"
+            >Dashboard only</button>
             <button
               @click="setSlackEnabled(true)"
-              class="border p-4 text-left transition hover:border-stone-950"
-              :class="settings.organization.slack_notifications_enabled ? 'border-stone-950 bg-stone-50 text-stone-950' : 'border-stone-200 text-stone-500'"
-            >
-              <span class="block text-sm font-semibold">Slack + dashboard</span>
-              <span class="mt-1 block text-sm">Send Slack cards while keeping dashboard review available.</span>
-            </button>
-          </div>
-
-          <div x-show="settings.organization.slack_notifications_enabled" x-cloak class="border-t border-stone-200 pt-5">
-            <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="slack-channel">Slack channel ID</label>
-            <div class="mt-2 flex flex-col gap-3 sm:flex-row">
-              <input id="slack-channel" x-model="slackChannelId" placeholder="C0123456789" class="h-10 min-w-0 flex-1 border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />
-              <button @click="saveSlackChannel()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Save channel</button>
-            </div>
-            <p class="mt-2 text-sm text-stone-500" x-text="slackStatus()"></p>
+              class="px-4 py-2 font-semibold transition"
+              :class="settings.organization.slack_notifications_enabled ? 'bg-stone-950 text-white' : 'bg-white text-stone-500 hover:text-stone-950'"
+            >Slack + dashboard</button>
           </div>
         </div>
-      </details>
+
+        <p x-show="reviewMessage" x-text="reviewMessage" x-cloak class="mt-4 border-l-2 border-stone-300 pl-3 text-sm text-stone-600"></p>
+
+        <div x-show="settings.organization.slack_notifications_enabled" x-cloak class="mt-5 border-t border-stone-200 pt-5">
+          <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="slack-channel">Slack channel ID</label>
+          <div class="mt-2 flex flex-col gap-3 sm:flex-row">
+            <input id="slack-channel" x-model="slackChannelId" placeholder="C0123456789" class="h-10 min-w-0 flex-1 border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950" />
+            <button @click="saveSlackChannel()" class="h-10 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline">Save channel</button>
+          </div>
+          <p class="mt-2 text-sm text-stone-500" x-text="slackStatus()"></p>
+        </div>
+      </section>
+
+      <section class="border border-red-200 p-6">
+        <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+          <div>
+            <h2 class="font-semibold text-red-800">Danger zone</h2>
+            <p class="mt-1 text-sm text-stone-500">Delete this organization and all of its rules, escalations, API keys, and training data.</p>
+          </div>
+          <button x-show="!deleteConfirmOpen" @click="deleteConfirmOpen = true" class="border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:border-red-700">Delete organization</button>
+        </div>
+        <div x-show="deleteConfirmOpen" x-cloak class="mt-5 border-t border-red-100 pt-4">
+          <p class="text-sm text-stone-600">Type <span class="font-semibold text-stone-950" x-text="settings.organization.name"></span> to confirm.</p>
+          <div class="mt-3 flex flex-col gap-3 sm:flex-row">
+            <input x-model="deleteConfirmName" class="h-10 min-w-0 flex-1 border-b border-red-300 bg-transparent text-sm outline-none focus:border-red-700" />
+            <button @click.stop.prevent="deleteOrganization()" :disabled="deleteConfirmName !== settings.organization.name || deletingOrganization" class="h-10 text-sm font-semibold text-red-700 underline-offset-4 hover:underline disabled:text-stone-300 disabled:no-underline" x-text="deletingOrganization ? 'Deleting...' : 'Delete forever'"></button>
+            <button @click.stop.prevent="deleteConfirmOpen = false; deleteConfirmName = ''" :disabled="deletingOrganization" class="h-10 text-sm font-semibold text-stone-500 underline-offset-4 hover:text-stone-950 hover:underline disabled:text-stone-300 disabled:no-underline">Cancel</button>
+          </div>
+        </div>
+      </section>
     </div>
   </template>
 </div>
@@ -151,6 +164,9 @@
       keyMessage: "",
       reviewMessage: "",
       newKeyOpen: false,
+      deleteConfirmOpen: false,
+      deleteConfirmName: "",
+      deletingOrganization: false,
       refreshInterval: null,
       headers() {
         return { "Content-Type": "application/json" };
@@ -214,15 +230,52 @@
           can_create: Boolean(data.can_create),
         };
       },
+      async revokeApiKey(key) {
+        if (!key?.id) return;
+        if (!window.confirm(`Revoke "${key.name}"? Apps using this key will stop working.`)) return;
+        const response = await fetch(`/admin/api-keys/${key.id}`, {
+          method: "DELETE",
+          credentials: "include",
+          headers: this.headers(),
+        });
+        if (!response.ok) {
+          this.keyMessage = await this.failureMessage(response, `Could not revoke key (${response.status}).`);
+          window.signalToast(this.keyMessage, "error");
+          return;
+        }
+        const data = await response.json();
+        this.keyMessage = data.message || "API key revoked.";
+        window.signalToast(this.keyMessage, "success");
+        await this.loadSettings(true);
+        await this.loadApiKeys();
+      },
+      async deleteOrganization() {
+        if (this.deletingOrganization) return;
+        if (!this.settings?.organization || this.deleteConfirmName !== this.settings.organization.name) return;
+        this.deletingOrganization = true;
+        try {
+          const response = await fetch(`/admin/organizations/${this.settings.organization.id}`, {
+            method: "DELETE",
+            credentials: "include",
+          });
+          if (!response.ok) {
+            this.pageMessage = await this.failureMessage(response, `Could not delete organization (${response.status}).`);
+            window.signalToast(this.pageMessage, "error");
+            return;
+          }
+          sessionStorage.removeItem("signal_org_name");
+          const result = await response.json();
+          window.signalToast(result.message || "Organization deleted.", "success");
+          window.location.href = "/dashboard";
+        } finally {
+          this.deletingOrganization = false;
+        }
+      },
       apiKeyUsage() {
         if (!this.settings?.organization) return "-";
         const limits = this.settings.api_key_limits || {};
         const limit = limits.limit >= 10000 ? "Custom" : limits.limit;
         return `${limits.count || 0} / ${limit}`;
-      },
-      reviewMode() {
-        if (!this.settings?.organization) return "-";
-        return this.settings.organization.slack_notifications_enabled ? "Slack + dashboard" : "Dashboard only";
       },
       canCreateApiKey() {
         return Boolean(this.settings?.organization && this.settings?.api_key_limits?.can_create);
@@ -240,6 +293,7 @@
         });
         if (!response.ok) {
           this.keyMessage = await this.failureMessage(response, `Could not create key (${response.status}).`);
+          window.signalToast(this.keyMessage, "error");
           return;
         }
         const data = await response.json();
@@ -247,6 +301,7 @@
         this.newKeyName = "";
         this.newKeyOpen = false;
         this.keyMessage = data.message;
+        window.signalToast("API key created. Copy it now.", "success");
         await this.loadSettings(true);
         await this.loadApiKeys();
       },
@@ -259,11 +314,13 @@
         });
         if (!response.ok) {
           this[target] = await this.failureMessage(response, `Could not save settings (${response.status}).`);
+          window.signalToast(this[target], "error");
           return;
         }
         this.settings = await response.json();
         if (this.settings.organization) this.slackChannelId = this.settings.organization.slack_channel_id || "";
         this[target] = "Settings saved.";
+        window.signalToast("Settings saved.", "success");
       },
       setSlackEnabled(enabled) {
         return this.patch({ slack_notifications_enabled: enabled }, "reviewMessage");
@@ -274,8 +331,10 @@
       copyToClipboard(text) {
         navigator.clipboard.writeText(text).then(() => {
           this.keyMessage = "Copied to clipboard.";
+          window.signalToast("Copied.", "success");
         }).catch(() => {
           this.keyMessage = "Could not copy. Copy it manually.";
+          window.signalToast(this.keyMessage, "error");
         });
       },
       formatDate(dateStr) {

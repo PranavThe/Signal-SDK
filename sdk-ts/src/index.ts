@@ -1,5 +1,7 @@
 export {
   Signal,
+  canonicalizeFieldName,
+  normalizeContext,
   type CheckParams,
   type CheckResult,
   type EscalateParams,

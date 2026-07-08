@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.models import Rule
+from api.services.context_schema_service import ContextSchemaService
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +38,21 @@ class RuleTestingService:
         if rule is None:
             return None
 
+        context_result = await ContextSchemaService().normalize(
+            session,
+            rule.org_id,
+            test_context,
+            learn=False,
+            source="rule_test",
+        )
+        normalized_context = context_result.normalized
         matched_conditions = []
         unmatched_conditions = []
 
         # Evaluate each condition
         all_conditions_matched = True
         for condition in rule.structured_conditions:
-            if self._evaluate_condition(test_context, condition):
+            if self._evaluate_condition(normalized_context, condition):
                 matched_conditions.append(condition)
             else:
                 unmatched_conditions.append(condition)
@@ -77,7 +86,7 @@ class RuleTestingService:
                     field = cond.get("field", "unknown")
                     operator = cond.get("operator", "unknown")
                     value = cond.get("value")
-                    context_value = self._get_nested_value(test_context, field)
+                    context_value = self._get_nested_value(normalized_context, field)
                     reasoning_parts.append(f"  {i}. {field} {operator} {value} (actual: {context_value})")
 
         return RuleTestResult(

@@ -5,10 +5,35 @@ from datetime import UTC, datetime
 from typing import Any
 
 from api.models import Rule
+from api.services.context_schema_service import canonicalize_scalar_field
+
+
+def _context_value(context: dict[str, Any], field: str) -> Any:
+    if field in context:
+        return context.get(field)
+    canonical = canonicalize_scalar_field(field)
+    if canonical in context:
+        return context.get(canonical)
+    for raw_key, value in context.items():
+        if canonicalize_scalar_field(str(raw_key)) == canonical and not isinstance(value, dict):
+            return value
+    if canonical.endswith(".name"):
+        parent = canonical.removesuffix(".name")
+        parent_value = context.get(parent)
+        if parent_value is not None and not isinstance(parent_value, dict):
+            return parent_value
+    current: Any = context
+    for part in canonical.split("."):
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+        if current is None:
+            return None
+    return current
 
 
 def evaluate_condition(field: str, operator: str, expected: Any, context: dict[str, Any]) -> bool:
-    actual = context.get(field)
+    actual = _context_value(context, field)
 
     # Check exists operator first before None check
     if operator == "exists":

@@ -287,9 +287,9 @@ result = await signalops.escalate(
 
 - `agent_id` (str): Unique identifier for your agent
 - `question` (str): Clear description of what decision is needed
-- `context` (str): Text description of the situation
-  - Format with field: value pairs for best dashboard display
-  - Example: `"Amount: $150\nCustomer Tier: premium"`
+- `context` (dict or str): Context for the situation
+  - Prefer a dictionary so Signal can normalize fields before matching rules
+  - Example: `{"amount": 150, "customer_tier": "premium"}`
 - `metadata` (dict, optional): Additional structured data (stored but not displayed prominently)
 - `action` (str, optional): Action identifier for this decision type
 - `timeout_seconds` (int, optional): How long to wait for a decision (default: 3600)

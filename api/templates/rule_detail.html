@@ -219,7 +219,9 @@
     return {
       detail: initialDetail || {},
       message: "",
-      refreshInterval: null,
+      refreshTimer: null,
+      refreshDelayMs: 10000,
+      loading: false,
       activeTab: "details",
       analytics: {},
       versions: [],
@@ -257,10 +259,17 @@
         this.loadAnalytics();
         this.loadVersions();
         this.loadComments();
-        this.refreshInterval = setInterval(() => this.load(false), 10000);
+        this.scheduleRefresh();
         window.addEventListener("beforeunload", () => {
-          if (this.refreshInterval) clearInterval(this.refreshInterval);
+          if (this.refreshTimer) clearTimeout(this.refreshTimer);
         });
+      },
+      scheduleRefresh(delay = this.refreshDelayMs) {
+        if (this.refreshTimer) clearTimeout(this.refreshTimer);
+        this.refreshTimer = setTimeout(async () => {
+          await this.load(false);
+          this.scheduleRefresh();
+        }, delay);
       },
       statusClass(status) {
         if (status === "active") return "text-emerald-700";
@@ -281,23 +290,34 @@
       },
       async load(showErrors = true) {
         if (!this.rule.id) return;
-        const response = await fetch(`/admin/rules/${this.rule.id}/detail`, { credentials: "include" });
-        if (!response.ok) {
-          if (showErrors) this.message = await this.failureMessage(response, `Could not refresh rule (${response.status}).`);
-          return;
+        if (this.loading) return;
+        this.loading = true;
+        try {
+          const response = await fetch(`/admin/rules/${this.rule.id}/detail`, { credentials: "include" });
+          if (!response.ok) {
+            this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
+            if (showErrors) this.message = await this.failureMessage(response, `Could not refresh rule (${response.status}).`);
+            return;
+          }
+          this.detail = await response.json();
+          this.refreshDelayMs = 10000;
+        } catch {
+          this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
+          if (showErrors) this.message = "Connection interrupted. Retrying automatically.";
+        } finally {
+          this.loading = false;
         }
-        this.detail = await response.json();
       },
       async loadAnalytics() {
         if (!this.rule.id) return;
-        const response = await fetch(`/v1/rules/${this.rule.id}/analytics`, { credentials: "include" });
+        const response = await fetch(`/admin/rules/${this.rule.id}/analytics`, { credentials: "include" });
         if (response.ok) {
           this.analytics = await response.json();
         }
       },
       async loadVersions() {
         if (!this.rule.id) return;
-        const response = await fetch(`/v1/rules/${this.rule.id}/versions`, { credentials: "include" });
+        const response = await fetch(`/admin/rules/${this.rule.id}/versions`, { credentials: "include" });
         if (response.ok) {
           const data = await response.json();
           this.versions = data.versions || [];
@@ -305,7 +325,7 @@
       },
       async loadComments() {
         if (!this.rule.id) return;
-        const response = await fetch(`/v1/rules/${this.rule.id}/comments`, { credentials: "include" });
+        const response = await fetch(`/admin/rules/${this.rule.id}/comments`, { credentials: "include" });
         if (response.ok) {
           const data = await response.json();
           this.comments = data.comments || [];
@@ -313,7 +333,7 @@
       },
       async addComment() {
         if (!this.newComment.trim()) return;
-        const response = await fetch(`/v1/rules/${this.rule.id}/comments`, {
+        const response = await fetch(`/admin/rules/${this.rule.id}/comments`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -353,7 +373,7 @@
           this.message = "Invalid JSON in test context.";
           return;
         }
-        const response = await fetch(`/v1/rules/${this.rule.id}/test`, {
+        const response = await fetch(`/admin/rules/${this.rule.id}/test`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",

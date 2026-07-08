@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import case, delete, func, or_, select, text, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.templating import Jinja2Templates
 
@@ -41,13 +42,19 @@ from api.models import (
     Account,
     ApiKey,
     ConsolidationSuggestion,
+    ContextField,
+    ContextFieldAlias,
     DashboardOrgMembership,
     Escalation,
     Feedback,
+    HistoricalDecisionImport,
+    HistoricalRuleProposal,
     Organization,
     PolicyCheckLog,
     Rule,
+    RuleComment,
     RuleConflict,
+    RuleVersion,
 )
 from api.plans import PLANS, effective_plan, normalize_tier, plan_for_tier, plan_payload
 from api.schemas import RuleDeleteRequest, RuleStatusUpdate
@@ -59,9 +66,9 @@ from api.services.billing_service import (
     create_checkout_session,
 )
 from api.services.conflict_service import ConflictService, ConflictWarning
+from api.services.context_schema_service import ContextSchemaService
 from api.services.escalation_pipeline import slack_delivery_available
 from api.services.lifecycle_service import run_consolidation
-from api.services.redis_service import get_cached_metrics, set_cached_metrics
 from api.services.review_service import (
     approve_rule,
     create_rule_from_escalation,
@@ -73,6 +80,9 @@ from api.services.review_service import (
     revise_rule,
 )
 from api.services.resolution_propagator import propagate_rule
+from api.services.rule_analytics_service import RuleAnalyticsService
+from api.services.rule_import_export_service import RuleImportExportService
+from api.services.rule_testing_service import RuleTestingService
 from api.services.semantic_service import find_similar_escalations
 from api.background_tasks import safe_background_task
 
@@ -107,6 +117,32 @@ class DashboardOrgSelectRequest(BaseModel):
 
 class ApiKeyGenerateRequest(BaseModel):
     name: str = Field(default="Dashboard Generated", min_length=1, max_length=100)
+
+
+class DashboardBulkRuleStatusUpdate(BaseModel):
+    rule_ids: list[UUID]
+    status: Literal["active", "paused", "archived"]
+
+
+class DashboardRuleImportRequest(BaseModel):
+    json_data: str
+    skip_duplicates: bool = True
+
+
+class DashboardAddCommentRequest(BaseModel):
+    comment_text: str = Field(min_length=1, max_length=5000)
+
+
+class DashboardRuleTestRequest(BaseModel):
+    test_context: dict[str, Any]
+
+
+class DashboardEscalationQuickDecisionRequest(BaseModel):
+    decision: Literal["approve", "reject"]
+
+
+class DashboardEscalationTagsRequest(BaseModel):
+    tags: list[str]
 
 
 class OrganizationSetupRequest(BaseModel):
@@ -197,8 +233,10 @@ def _escalation_payload(escalation: Escalation) -> dict[str, Any]:
     return {
         "id": str(escalation.id),
         "context": escalation.context,
+        "normalized_context": escalation.normalized_context,
         "question": escalation.question,
         "metadata": escalation.metadata_,
+        "normalized_context": escalation.normalized_context,
         "agent_id": escalation.agent_id,
         "status": escalation.status,
         "human_decision": escalation.human_decision,
@@ -221,6 +259,59 @@ def _check_log_payload(log: PolicyCheckLog) -> dict[str, Any]:
         "reasoning": log.reasoning,
         "cache_hit": log.cache_hit,
         "created_at": _serialize(log.created_at),
+    }
+
+
+def _activity_item_payload(kind: str, item: Any, rule: Rule | None = None) -> dict[str, Any]:
+    if kind == "check":
+        matched = item.rule_id is not None
+        return {
+            "id": str(item.id),
+            "kind": "Auto-handled" if matched else "Checked",
+            "tone": "success" if matched else "neutral",
+            "title": f"{item.action} by {item.agent_id}",
+            "summary": item.reasoning,
+            "time": _time_ago(item.created_at),
+            "created_at": _serialize(item.created_at),
+            "rule": {
+                "id": str(rule.id),
+                "condition": rule.condition_description,
+                "action": rule.action_description,
+            }
+            if rule
+            else None,
+            "context": item.context,
+        }
+    if kind == "escalation":
+        return {
+            "id": str(item.id),
+            "kind": "Escalated" if item.finalized_at is None else "Resolved",
+            "tone": "warning" if item.finalized_at is None else "neutral",
+            "title": item.question,
+            "summary": item.context,
+            "time": _time_ago(item.created_at),
+            "created_at": _serialize(item.created_at),
+            "agent_id": item.agent_id,
+            "status": item.status,
+            "human_decision": item.human_decision,
+            "rule_id": _serialize(item.rule_id),
+            "context": item.metadata_,
+        }
+    return {
+        "id": str(item.id),
+        "kind": "Rule created" if item.status == "active" else "Rule updated",
+        "tone": "success" if item.status == "active" else "neutral",
+        "title": item.condition_description,
+        "summary": item.action_description,
+        "time": _time_ago(item.created_at),
+        "created_at": _serialize(item.created_at),
+        "status": item.status,
+        "rule": {
+            "id": str(item.id),
+            "condition": item.condition_description,
+            "action": item.action_description,
+        },
+        "context": item.structured_conditions,
     }
 
 
@@ -277,6 +368,30 @@ def _dashboard_rule_payload(rule: Rule) -> dict[str, Any]:
         "created": _time_ago(rule.created_at),
         "updated": _time_ago(rule.updated_at),
     }
+
+
+async def _rule_conflict_counts(session: AsyncSession, rules: list[Rule]) -> dict[UUID, int]:
+    rule_ids = {rule.id for rule in rules}
+    if not rule_ids:
+        return {}
+    conflicts = (
+        await session.execute(
+            select(RuleConflict).where(
+                RuleConflict.resolved.is_(False),
+                or_(
+                    RuleConflict.rule_a_id.in_(rule_ids),
+                    RuleConflict.rule_b_id.in_(rule_ids),
+                ),
+            )
+        )
+    ).scalars().all()
+    counts = {rule_id: 0 for rule_id in rule_ids}
+    for conflict in conflicts:
+        if conflict.rule_a_id in counts:
+            counts[conflict.rule_a_id] += 1
+        if conflict.rule_b_id in counts:
+            counts[conflict.rule_b_id] += 1
+    return counts
 
 
 def _dashboard_escalation_payload(escalation: Escalation, rule: Rule | None = None) -> dict[str, Any]:
@@ -350,6 +465,8 @@ async def _delete_organization_data(session: AsyncSession, org_id: UUID) -> None
     if rule_ids:
         await session.execute(update(Escalation).where(Escalation.rule_id.in_(rule_ids)).values(rule_id=None))
         await session.execute(update(Rule).where(Rule.id.in_(rule_ids)).values(source_escalation_id=None))
+        await session.execute(delete(RuleComment).where(RuleComment.rule_id.in_(rule_ids)))
+        await session.execute(delete(RuleVersion).where(RuleVersion.rule_id.in_(rule_ids)))
         await session.execute(
             delete(RuleConflict).where(
                 or_(
@@ -373,6 +490,11 @@ async def _delete_organization_data(session: AsyncSession, org_id: UUID) -> None
     await session.execute(delete(PolicyCheckLog).where(PolicyCheckLog.org_id == org_id))
     await session.execute(delete(Escalation).where(Escalation.org_id == org_id))
     await session.execute(delete(Rule).where(Rule.org_id == org_id))
+    await session.execute(delete(HistoricalRuleProposal).where(HistoricalRuleProposal.org_id == org_id))
+    await session.execute(delete(HistoricalDecisionImport).where(HistoricalDecisionImport.org_id == org_id))
+    await session.execute(delete(ContextFieldAlias).where(ContextFieldAlias.org_id == org_id))
+    await session.execute(delete(ContextField).where(ContextField.org_id == org_id))
+    await session.execute(delete(Feedback).where(Feedback.org_id == org_id))
     await session.execute(delete(ApiKey).where(ApiKey.org_id == org_id))
     await session.execute(delete(DashboardOrgMembership).where(DashboardOrgMembership.org_id == org_id))
     await session.execute(delete(Organization).where(Organization.id == org_id))
@@ -667,7 +789,14 @@ async def _empty_overview_data() -> dict[str, Any]:
             "auto_handled_today": 0,
             "escalations_today": 0,
             "autonomy_score": "0.0%",
+            "pending_review": 0,
+            "pending_rules": 0,
+            "week_total_decisions": 0,
+            "week_auto_handled": 0,
+            "week_escalations": 0,
+            "week_autonomy_score": "0.0%",
         },
+        "health_summary": "No agent decisions have been recorded yet.",
         "trend": [],
         "active_rules": [],
         "recent_escalations": [],
@@ -678,11 +807,6 @@ async def _empty_overview_data() -> dict[str, Any]:
 async def _overview_data(session: AsyncSession, org_id: UUID | None) -> dict[str, Any]:
     if org_id is None:
         return await _empty_overview_data()
-
-    # Check cache first
-    cached = await get_cached_metrics(str(org_id))
-    if cached is not None:
-        return cached
 
     today_start = _today_start_utc()
     trend_start = today_start - timedelta(days=6)
@@ -792,8 +916,27 @@ async def _overview_data(session: AsyncSession, org_id: UUID | None) -> dict[str
                 "auto_handled": total_auto_handled,
                 "escalations": manual_escalations,
                 "autonomy": f"{(total_auto_handled / total * 100) if total else 0:.1f}%",
+                "autonomy_value": round((total_auto_handled / total * 100) if total else 0, 1),
             }
         )
+
+    week_total_decisions = sum(int(day["total_decisions"]) for day in trend)
+    week_auto_handled = sum(int(day["auto_handled"]) for day in trend)
+    week_escalations = sum(int(day["escalations"]) for day in trend)
+    week_autonomy_score = (week_auto_handled / week_total_decisions * 100) if week_total_decisions else 0
+
+    pending_review = await _count(
+        session,
+        select(func.count())
+        .select_from(Escalation)
+        .where(Escalation.finalized_at.is_(None), Escalation.org_id == org_id),
+    )
+    pending_rules = await _count(
+        session,
+        select(func.count())
+        .select_from(Rule)
+        .where(Rule.status.in_(["pending_approval", "pending_edit"]), Rule.org_id == org_id),
+    )
 
     active_rules = (
         await session.execute(
@@ -857,7 +1000,18 @@ async def _overview_data(session: AsyncSession, org_id: UUID | None) -> dict[str
             "auto_handled_today": total_auto_handled_today,
             "escalations_today": manual_escalations_today,
             "autonomy_score": f"{autonomy_score:.1f}%",
+            "pending_review": pending_review,
+            "pending_rules": pending_rules,
+            "week_total_decisions": week_total_decisions,
+            "week_auto_handled": week_auto_handled,
+            "week_escalations": week_escalations,
+            "week_autonomy_score": f"{week_autonomy_score:.1f}%",
         },
+        "health_summary": (
+            f"Your agent auto-handled {week_autonomy_score:.1f}% of decisions this week, "
+            f"escalated {week_escalations}, and has {pending_review + pending_rules} item"
+            f"{'' if pending_review + pending_rules == 1 else 's'} waiting for review."
+        ),
         "trend": trend,
         "active_rules": [
             {
@@ -881,9 +1035,6 @@ async def _overview_data(session: AsyncSession, org_id: UUID | None) -> dict[str
         ],
         "suggestions": suggestion_items,
     }
-
-    # Cache the result for 30 seconds
-    await set_cached_metrics(str(org_id), result, ttl_seconds=30)
 
     return result
 
@@ -1075,6 +1226,63 @@ async def dashboard_review(
     )
 
 
+@router.get("/dashboard/activity")
+async def dashboard_activity(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    template_context = await _dashboard_template_context(request, session)
+    if isinstance(template_context, RedirectResponse):
+        return template_context
+    return templates.TemplateResponse(
+        request,
+        "activity.html",
+        {
+            "active_nav": "activity",
+            "nav_scope": "org",
+            **template_context,
+        },
+    )
+
+
+@router.get("/dashboard/context")
+async def dashboard_context(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    template_context = await _dashboard_template_context(request, session)
+    if isinstance(template_context, RedirectResponse):
+        return template_context
+    return templates.TemplateResponse(
+        request,
+        "context.html",
+        {
+            "active_nav": "context",
+            "nav_scope": "org",
+            **template_context,
+        },
+    )
+
+
+@router.get("/dashboard/training")
+async def dashboard_training(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    template_context = await _dashboard_template_context(request, session)
+    if isinstance(template_context, RedirectResponse):
+        return template_context
+    return templates.TemplateResponse(
+        request,
+        "training.html",
+        {
+            "active_nav": "training",
+            "nav_scope": "org",
+            **template_context,
+        },
+    )
+
+
 @router.get("/dashboard/rules")
 async def dashboard_rules(
     request: Request,
@@ -1100,6 +1308,7 @@ async def dashboard_rules(
                 .order_by(status_order, Rule.trigger_count.desc(), Rule.created_at.desc())
             )
         ).scalars().all()
+    conflict_counts = await _rule_conflict_counts(session, rules)
     return templates.TemplateResponse(
         request,
         "rules.html",
@@ -1107,7 +1316,13 @@ async def dashboard_rules(
             "active_nav": "rules",
             "nav_scope": "org",
             **template_context,
-            "rules": [_dashboard_rule_payload(rule) for rule in rules],
+            "rules": [
+                {
+                    **_dashboard_rule_payload(rule),
+                    "conflict_count": conflict_counts.get(rule.id, 0),
+                }
+                for rule in rules
+            ],
         },
     )
 
@@ -1544,8 +1759,16 @@ async def delete_organization(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
     org_name = org.name
 
-    await _delete_organization_data(session, org_id)
-    await session.commit()
+    try:
+        await _delete_organization_data(session, org_id)
+        await session.commit()
+    except SQLAlchemyError as exc:
+        await session.rollback()
+        logger.exception("Failed to delete organization %s", org_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not delete organization because related data could not be fully removed. Please try again.",
+        ) from exc
 
     selected_org_id = http_request.cookies.get(DASHBOARD_ORG_ID_COOKIE)
     if selected_org_id == str(org_id):
@@ -1641,6 +1864,43 @@ async def list_api_keys(
     }
 
 
+@router.delete("/admin/api-keys/{key_id}")
+async def delete_api_key(
+    key_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> dict[str, Any]:
+    """Revoke an API key for the selected dashboard organization."""
+    account = await _get_account_for_user(session, dashboard_user)
+    org = await _get_org(session, auth.org_id)
+    if org.account_id != account.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+
+    api_key = (
+        await session.execute(
+            select(ApiKey).where(
+                ApiKey.id == key_id,
+                ApiKey.org_id == auth.org_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if api_key is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
+
+    await session.delete(api_key)
+    await session.commit()
+
+    active_plan = effective_plan(account.plan_tier, account.billing_status)
+    new_count = await _api_key_count(session, auth.org_id)
+    return {
+        "message": "API key revoked.",
+        "count": new_count,
+        "limit": active_plan.api_keys_per_org,
+        "can_create": new_count < active_plan.api_keys_per_org,
+    }
+
+
 @router.post("/admin/billing/checkout")
 async def start_billing_checkout(
     request: BillingCheckoutRequest,
@@ -1697,7 +1957,16 @@ async def get_rules(
             .offset(safe_offset)
         )
     ).scalars().all()
-    return {"items": [_dashboard_rule_payload(rule) for rule in rules]}
+    conflict_counts = await _rule_conflict_counts(session, rules)
+    return {
+        "items": [
+            {
+                **_dashboard_rule_payload(rule),
+                "conflict_count": conflict_counts.get(rule.id, 0),
+            }
+            for rule in rules
+        ]
+    }
 
 
 @router.get("/admin/rules/{rule_id}/detail")
@@ -1756,6 +2025,288 @@ async def delete_dashboard_rules(
     return {"deleted": [str(rule_id) for rule_id in deleted], "count": len(deleted)}
 
 
+@router.post("/admin/rules/bulk/status")
+async def bulk_update_dashboard_rule_status(
+    request: DashboardBulkRuleStatusUpdate,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> dict[str, Any]:
+    _ = dashboard_user
+    if not request.rule_ids:
+        return {"updated": [], "count": 0, "status": request.status}
+
+    rules = (
+        await session.execute(
+            select(Rule).where(
+                Rule.id.in_(request.rule_ids),
+                Rule.org_id == auth.org_id,
+            )
+        )
+    ).scalars().all()
+    if len(rules) != len(set(request.rule_ids)):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Some selected rules were not found.",
+        )
+
+    if request.status == "active":
+        conflict_service = ConflictService()
+        for rule in rules:
+            if rule.status == "active":
+                continue
+            conflict_warnings = await conflict_service.detect_activation_conflicts(session, rule)
+            if conflict_warnings:
+                await session.flush()
+                await session.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "message": "One selected rule would conflict with an existing active rule.",
+                        "rule_id": str(rule.id),
+                        "conflicts": [_conflict_payload(warning) for warning in conflict_warnings],
+                    },
+                )
+
+    updated_ids = []
+    now = datetime.now(UTC)
+    for rule in rules:
+        rule.status = request.status
+        rule.updated_at = now
+        updated_ids.append(str(rule.id))
+
+    await session.commit()
+    if request.status == "active":
+        safe_background_task(run_consolidation(org_id=auth.org_id, max_pairs_per_org=50), "run_consolidation")
+
+    return {
+        "updated": updated_ids,
+        "count": len(updated_ids),
+        "status": request.status,
+    }
+
+
+@router.get("/admin/rules/export/json")
+async def export_dashboard_rules_json(
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> Response:
+    _ = dashboard_user
+    json_data = await RuleImportExportService().export_rules_json(session, auth.org_id)
+    return Response(
+        content=json_data,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f"attachment; filename=rules_{auth.org_id}_{datetime.now(UTC).isoformat()}.json"
+        },
+    )
+
+
+@router.get("/admin/rules/export/csv")
+async def export_dashboard_rules_csv(
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> Response:
+    _ = dashboard_user
+    csv_data = await RuleImportExportService().export_rules_csv(session, auth.org_id)
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=rules_{auth.org_id}_{datetime.now(UTC).isoformat()}.csv"
+        },
+    )
+
+
+@router.post("/admin/rules/import")
+async def import_dashboard_rules(
+    request: DashboardRuleImportRequest,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> dict[str, Any]:
+    _ = dashboard_user
+    result = await RuleImportExportService().import_rules_json(
+        session,
+        auth.org_id,
+        request.json_data,
+        request.skip_duplicates,
+    )
+    if result.imported_rule_ids:
+        imported_rules = (
+            await session.execute(
+                select(Rule).where(Rule.id.in_([UUID(rule_id) for rule_id in result.imported_rule_ids]))
+            )
+        ).scalars().all()
+        context_schema = ContextSchemaService()
+        for rule in imported_rules:
+            rule.structured_conditions, _ = await context_schema.canonicalize_conditions(
+                session,
+                auth.org_id,
+                rule.structured_conditions,
+                learn=True,
+                source="rule_import",
+            )
+        await session.commit()
+    if result.imported_count:
+        safe_background_task(run_consolidation(org_id=auth.org_id, max_pairs_per_org=50), "run_consolidation")
+
+    return {
+        "success": result.success,
+        "imported_count": result.imported_count,
+        "skipped_count": result.skipped_count,
+        "error_count": result.error_count,
+        "errors": result.errors,
+        "imported_rule_ids": result.imported_rule_ids,
+        "imported": result.imported_count,
+        "skipped": result.skipped_count,
+    }
+
+
+@router.get("/admin/rules/{rule_id}/analytics")
+async def get_dashboard_rule_analytics(
+    rule_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> dict[str, Any]:
+    _ = dashboard_user
+    await _get_org_rule(session, rule_id, auth.org_id)
+    stats = await RuleAnalyticsService().get_rule_usage_stats(session, rule_id)
+    if stats is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rule not found")
+    return {
+        "rule_id": stats.rule_id,
+        "trigger_count": stats.trigger_count,
+        "override_count": stats.override_count,
+        "last_triggered_at": _serialize(stats.last_triggered_at),
+        "days_since_last_trigger": stats.days_since_last_trigger,
+        "triggers_last_7_days": stats.triggers_last_7_days,
+        "triggers_last_30_days": stats.triggers_last_30_days,
+        "triggers_last_90_days": stats.triggers_last_90_days,
+        "is_stale": stats.is_stale,
+    }
+
+
+@router.get("/admin/rules/{rule_id}/versions")
+async def get_dashboard_rule_versions(
+    rule_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> dict[str, Any]:
+    _ = dashboard_user
+    await _get_org_rule(session, rule_id, auth.org_id)
+    versions = (
+        await session.execute(
+            select(RuleVersion)
+            .where(RuleVersion.rule_id == rule_id)
+            .order_by(RuleVersion.version_number.desc())
+        )
+    ).scalars().all()
+    return {
+        "versions": [
+            {
+                "id": str(version.id),
+                "version_id": str(version.id),
+                "version_number": version.version_number,
+                "condition_description": version.condition_description,
+                "action_description": version.action_description,
+                "exceptions_note": version.exceptions_note,
+                "changed_by": version.changed_by_email,
+                "change_description": version.change_description,
+                "created_at": _serialize(version.created_at),
+            }
+            for version in versions
+        ],
+        "current_version": len(versions) + 1,
+        "count": len(versions),
+    }
+
+
+@router.get("/admin/rules/{rule_id}/comments")
+async def get_dashboard_rule_comments(
+    rule_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> dict[str, Any]:
+    _ = dashboard_user
+    await _get_org_rule(session, rule_id, auth.org_id)
+    comments = (
+        await session.execute(
+            select(RuleComment)
+            .where(RuleComment.rule_id == rule_id)
+            .order_by(RuleComment.created_at.desc())
+        )
+    ).scalars().all()
+    return {
+        "comments": [
+            {
+                "id": str(comment.id),
+                "comment_id": str(comment.id),
+                "comment_text": comment.comment_text,
+                "created_by": comment.created_by_email,
+                "created_at": _serialize(comment.created_at),
+            }
+            for comment in comments
+        ],
+        "count": len(comments),
+    }
+
+
+@router.post("/admin/rules/{rule_id}/comments")
+async def add_dashboard_rule_comment(
+    rule_id: UUID,
+    request: DashboardAddCommentRequest,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> dict[str, Any]:
+    await _get_org_rule(session, rule_id, auth.org_id)
+    comment = RuleComment(
+        rule_id=rule_id,
+        comment_text=request.comment_text.strip(),
+        created_by_user_id=dashboard_user.user_id,
+        created_by_email=dashboard_user.email,
+    )
+    session.add(comment)
+    await session.commit()
+    return {
+        "id": str(comment.id),
+        "comment_id": str(comment.id),
+        "rule_id": str(rule_id),
+        "comment_text": comment.comment_text,
+        "created_by": comment.created_by_email,
+        "created_at": _serialize(comment.created_at),
+    }
+
+
+@router.post("/admin/rules/{rule_id}/test")
+async def test_dashboard_rule(
+    rule_id: UUID,
+    request: DashboardRuleTestRequest,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> dict[str, Any]:
+    _ = dashboard_user
+    await _get_org_rule(session, rule_id, auth.org_id)
+    result = await RuleTestingService().test_rule(session, rule_id, request.test_context)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rule not found")
+    return {
+        "rule_id": result.rule_id,
+        "matched": result.matched,
+        "action": result.action,
+        "reasoning": result.reasoning,
+        "matched_conditions": result.matched_conditions,
+        "unmatched_conditions": result.unmatched_conditions,
+    }
+
+
 @router.get("/admin/escalations")
 async def get_escalations(
     session: AsyncSession = Depends(get_session),
@@ -1791,6 +2342,65 @@ async def get_escalations(
     return {"items": items}
 
 
+@router.post("/admin/escalations/{escalation_id}/quick-decision")
+async def make_dashboard_quick_decision(
+    escalation_id: UUID,
+    request: DashboardEscalationQuickDecisionRequest,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> dict[str, Any]:
+    _ = dashboard_user
+    escalation = await _get_org_escalation(session, escalation_id, auth.org_id)
+    if escalation.status != "pending" or escalation.finalized_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Escalation has already been responded to",
+        )
+
+    now = datetime.now(UTC)
+    escalation.status = "responded"
+    escalation.human_decision = request.decision
+    escalation.auto_resolved = False
+    escalation.responded_at = now
+    escalation.finalized_at = now
+    escalation.finalization_reason = "quick_decision"
+    escalation.apply_broadly = False
+
+    await session.commit()
+    await publish_final_escalation_result(escalation)
+
+    return {
+        "escalation_id": str(escalation.id),
+        "status": escalation.status,
+        "human_decision": escalation.human_decision,
+        "finalized": True,
+    }
+
+
+@router.patch("/admin/escalations/{escalation_id}/tags")
+async def update_dashboard_escalation_tags(
+    escalation_id: UUID,
+    request: DashboardEscalationTagsRequest,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> dict[str, Any]:
+    _ = dashboard_user
+    escalation = await _get_org_escalation(session, escalation_id, auth.org_id)
+    normalized_tags = []
+    for tag in request.tags:
+        cleaned = tag.strip()
+        if cleaned and cleaned not in normalized_tags:
+            normalized_tags.append(cleaned)
+    escalation.tags = normalized_tags
+    await session.commit()
+    return {
+        "escalation_id": str(escalation.id),
+        "tags": escalation.tags,
+    }
+
+
 @router.get("/admin/check-logs")
 async def get_check_logs(
     session: AsyncSession = Depends(get_session),
@@ -1812,6 +2422,58 @@ async def get_check_logs(
         )
     ).scalars().all()
     return {"items": [_check_log_payload(log) for log in logs]}
+
+
+@router.get("/admin/activity")
+async def get_activity(
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+    limit: int = 75,
+) -> dict[str, Any]:
+    _ = dashboard_user
+    safe_limit = min(max(limit, 1), 150)
+    checks = (
+        await session.execute(
+            select(PolicyCheckLog)
+            .where(PolicyCheckLog.org_id == auth.org_id)
+            .order_by(PolicyCheckLog.created_at.desc())
+            .limit(safe_limit)
+        )
+    ).scalars().all()
+    escalations = (
+        await session.execute(
+            select(Escalation)
+            .where(Escalation.org_id == auth.org_id)
+            .order_by(Escalation.created_at.desc())
+            .limit(safe_limit)
+        )
+    ).scalars().all()
+    rules = (
+        await session.execute(
+            select(Rule)
+            .where(Rule.org_id == auth.org_id)
+            .order_by(Rule.created_at.desc())
+            .limit(safe_limit)
+        )
+    ).scalars().all()
+
+    rule_ids = {log.rule_id for log in checks if log.rule_id}
+    rules_by_id = {}
+    if rule_ids:
+        matched_rules = (await session.execute(select(Rule).where(Rule.id.in_(rule_ids)))).scalars().all()
+        rules_by_id = {rule.id: rule for rule in matched_rules}
+
+    events = []
+    for check in checks:
+        events.append((check.created_at, _activity_item_payload("check", check, rules_by_id.get(check.rule_id))))
+    for escalation in escalations:
+        events.append((escalation.created_at, _activity_item_payload("escalation", escalation)))
+    for rule in rules:
+        events.append((rule.created_at, _activity_item_payload("rule", rule)))
+
+    events.sort(key=lambda event: event[0], reverse=True)
+    return {"items": [payload for _, payload in events[:safe_limit]]}
 
 
 @router.post("/admin/feedback")

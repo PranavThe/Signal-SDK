@@ -2,11 +2,65 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from typing import Any
 
 import httpx
 from httpx_sse import aconnect_sse
+
+
+_NON_WORD_RE = re.compile(r"[^a-zA-Z0-9]+")
+_CAMEL_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+_PERSON_SCALAR_FIELDS = {
+    "actor",
+    "approver",
+    "author",
+    "creator",
+    "owner",
+    "requester",
+    "reviewer",
+    "submitter",
+    "user",
+}
+
+
+def canonicalize_field_name(field: str) -> str:
+    value = str(field or "").strip()
+    value = _CAMEL_RE.sub(".", value)
+    value = _NON_WORD_RE.sub(".", value)
+    return re.sub(r"\.+", ".", value).strip(".").lower()
+
+
+def _canonicalize_scalar_field(field: str) -> str:
+    canonical = canonicalize_field_name(field)
+    if canonical in _PERSON_SCALAR_FIELDS:
+        return f"{canonical}.name"
+    return canonical
+
+
+def normalize_context(context: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    normalized: dict[str, Any] = {}
+    warnings: list[str] = []
+
+    def visit(value: Any, prefix: str = "") -> None:
+        if isinstance(value, dict):
+            for raw_key, child in value.items():
+                key = canonicalize_field_name(str(raw_key))
+                path = f"{prefix}.{key}" if prefix else key
+                visit(child, path)
+            return
+        field = _canonicalize_scalar_field(prefix)
+        if not field:
+            return
+        if field in normalized and normalized[field] != value:
+            warnings.append(f"Multiple values mapped to canonical field '{field}'.")
+        normalized[field] = value
+        if field != prefix:
+            warnings.append(f"Normalized context field '{prefix}' to '{field}'.")
+
+    visit(context or {})
+    return normalized, warnings
 
 
 class EscalationResult:
@@ -17,11 +71,19 @@ class EscalationResult:
 
 
 class CheckResult:
-    def __init__(self, result: str, rule_id: str | None, reasoning: str, modification: dict | None):
+    def __init__(
+        self,
+        result: str,
+        rule_id: str | None,
+        reasoning: str,
+        modification: dict | None,
+        context_warnings: list[str] | None = None,
+    ):
         self.result = result
         self.rule_id = rule_id
         self.reasoning = reasoning
         self.modification = modification
+        self.context_warnings = context_warnings or []
 
 
 class Signal:
@@ -32,7 +94,7 @@ class Signal:
 
     async def escalate(
         self,
-        context: str,
+        context: str | dict[str, Any],
         question: str,
         agent_id: str,
         metadata: dict[str, Any] | None = None,
@@ -40,17 +102,26 @@ class Signal:
         timeout_seconds: int = 3600,
         poll_interval_seconds: int = 3,
     ) -> EscalationResult:
+        outbound_context = context
+        outbound_metadata = dict(metadata or {})
+        if isinstance(context, dict):
+            normalized_context, warnings = normalize_context(context)
+            outbound_context = json.dumps(normalized_context, sort_keys=True)
+            outbound_metadata.setdefault("_signal_raw_context", context)
+            if warnings:
+                outbound_metadata.setdefault("_signal_context_warnings", warnings)
+
         deadline = time.monotonic() + timeout_seconds
         timeout = httpx.Timeout(30.0, read=None)
         async with httpx.AsyncClient(base_url=self.base_url, headers=self.headers, timeout=timeout) as client:
             response = await client.post(
                 "/v1/escalations",
                 json={
-                    "context": context,
+                    "context": outbound_context,
                     "question": question,
                     "agent_id": agent_id,
                     "action": action,
-                    "metadata": metadata or {},
+                    "metadata": outbound_metadata,
                 },
             )
             response.raise_for_status()
@@ -130,13 +201,14 @@ class Signal:
         context: dict[str, Any],
         agent_id: str,
     ) -> CheckResult:
+        normalized_context, local_warnings = normalize_context(context)
         async with httpx.AsyncClient(base_url=self.base_url, headers=self.headers, timeout=30.0) as client:
             response = await client.post(
                 "/v1/check",
                 json={
                     "action": action,
                     "agent_id": agent_id,
-                    "context": context,
+                    "context": normalized_context,
                 },
             )
             response.raise_for_status()
@@ -147,4 +219,5 @@ class Signal:
             rule_id=data["rule_id"],
             reasoning=data["reasoning"],
             modification=data["modification"],
+            context_warnings=[*local_warnings, *(data.get("context_warnings") or [])],
         )

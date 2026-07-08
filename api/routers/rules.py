@@ -16,6 +16,7 @@ from api.database import get_session
 from api.models import ConsolidationSuggestion, Escalation, PolicyCheckLog, Rule, RuleComment, RuleConflict, RuleVersion
 from api.schemas import RuleDeleteRequest, RuleStatusUpdate
 from api.services.conflict_service import ConflictService
+from api.services.context_schema_service import ContextSchemaService
 from api.services.duplicate_rule_service import DuplicateRuleService
 from api.services.lifecycle_service import run_consolidation
 from api.services.rule_analytics_service import RuleAnalyticsService
@@ -423,6 +424,22 @@ async def import_rules(
         request.json_data,
         request.skip_duplicates,
     )
+    if result.imported_rule_ids:
+        imported_rules = (
+            await session.execute(
+                select(Rule).where(Rule.id.in_([UUID(rule_id) for rule_id in result.imported_rule_ids]))
+            )
+        ).scalars().all()
+        context_schema = ContextSchemaService()
+        for rule in imported_rules:
+            rule.structured_conditions, _ = await context_schema.canonicalize_conditions(
+                session,
+                auth.org_id,
+                rule.structured_conditions,
+                learn=True,
+                source="rule_import",
+            )
+        await session.commit()
 
     return {
         "success": result.success,

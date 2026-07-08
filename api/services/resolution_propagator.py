@@ -28,7 +28,7 @@ def _action_to_human_decision(action: str) -> str:
 def _has_exact_structured_coverage(rule: Rule, escalation: Escalation) -> bool:
     if not rule.structured_conditions:
         return False
-    return rule_matches(rule, escalation.metadata_ or {})
+    return rule_matches(rule, escalation.normalized_context or escalation.metadata_ or {})
 
 
 def _resolution_reason(rule: Rule) -> str:

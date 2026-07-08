@@ -19,7 +19,7 @@ function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
 }
 
 const DASHBOARD_URL = "https://signal-omega-tan.vercel.app/dashboard";
-const SIGNALOPS_VERSION = "0.1.2";
+const SIGNALOPS_VERSION = "0.2.0";
 
 function useIsNarrow(breakpoint: number) {
   const [isNarrow, setIsNarrow] = useState(false);
@@ -92,15 +92,12 @@ async def handle_refund_request(customer_id: str, order_amount: float, reason: s
     result = await signalops.escalate(
         agent_id="customer-support-refunds",
         question="Should I issue a refund for this order?",
-        context=f"""Customer ID: {customer_id}
-Order Amount: ${order_amount}
-Reason: {reason}
-Days Since Purchase: {days_since_purchase}
-Customer Tier: premium""",
-        metadata={
+        context={
             "customer_id": customer_id,
             "order_amount": order_amount,
-            "reason": reason
+            "reason": reason,
+            "days_since_purchase": days_since_purchase,
+            "customer_tier": "premium"
         }
     )
 
@@ -226,7 +223,7 @@ pip install signalops
 
 \`\`\`python
 import signalops
-print(signalops.__version__)  # Should print ${SIGNALOPS_VERSION}
+print(signalops.__version__)  # Should print 0.2.0 or newer
 \`\`\`
 
 ---
@@ -410,11 +407,13 @@ Escalate a decision to Signal. This will either return a decision from an existi
 result = await signalops.escalate(
     agent_id="customer-support-refunds",
     question="Should I issue a refund?",
-    context=\"\"\"Customer ID: cust_123
-Order Amount: $150
-Reason: Product arrived damaged
-Days Since Purchase: 3
-Customer Tier: premium\"\"\",
+    context={
+        "customer_id": "cust_123",
+        "order_amount": 150,
+        "reason": "Product arrived damaged",
+        "days_since_purchase": 3,
+        "customer_tier": "premium"
+    },
     action="refund_request",
     metadata={"customer_id": "cust_123", "order_amount": 150},
     timeout_seconds=600  # Wait up to 10 minutes
@@ -427,7 +426,7 @@ print(result.rule_id)        # Rule ID if auto-resolved, None otherwise
 
 **Important Notes:**
 - Your function must be \`async\` to use \`await escalate()\`
-- The \`context\` parameter should be formatted as \`Field: value\` on separate lines for best dashboard readability
+- Prefer passing \`context\` as a dict. Signal normalizes fields like \`author\`, \`author_name\`, and \`author.name\` before matching rules.
 - Signal will block until a decision is made or timeout is reached
 
 ---
@@ -824,15 +823,17 @@ Questions should be answerable with "approve"/"reject" or "yes"/"no":
 
 ### 2. Use Structured Context
 
-Format context as \`Field: value\` on separate lines:
+Pass context as a dictionary whenever possible:
 
 ✅ **Good:**
 \`\`\`python
-context = \"\"\"Customer ID: cust_123
-Order Amount: $150
-Reason: Product damaged
-Days Since Purchase: 3
-Customer Tier: premium\"\"\"
+context = {
+    "customer_id": "cust_123",
+    "order_amount": 150,
+    "reason": "Product damaged",
+    "days_since_purchase": 3,
+    "customer_tier": "premium"
+}
 \`\`\`
 
 ❌ **Bad:**
@@ -840,7 +841,7 @@ Customer Tier: premium\"\"\"
 context = "Customer cust_123 wants a refund for $150 because product damaged, 3 days since purchase, premium tier"
 \`\`\`
 
-**Why:** Structured context is easier to read in the dashboard and helps AI extract better rules.
+**Why:** Structured context is easier to read, gives Signal stable canonical fields, and prevents rule misses caused by names like \`author\` versus \`author.name\`.
 
 ---
 
@@ -1126,7 +1127,7 @@ pip install signalops
 Or add it to your requirements.txt:
 
 \`\`\`
-signalops>=1.0.0
+signalops>=0.2.0
 \`\`\`
 
 ### Requirements
@@ -1809,7 +1810,7 @@ Visit ${DASHBOARD_URL} for more information.
                 <div>
                   <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#0d0d0b" }}>Step 3: Write Your First Agent</h3>
                   <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Here's a complete working example:</p>
-                  <CodeBlock language="python" code={'import asyncio\nimport signalops\n\n# Configure Signal\nsignalops.configure(api_key="sk_live_your_api_key_here")\n\nasync def handle_refund_request(customer_id, amount, reason):\n    # Ask Signal for a decision\n    result = await signalops.escalate(\n        agent_id="customer-support-refunds",\n        question="Should I issue a refund?",\n        context=f"""Customer ID: {customer_id}\nOrder Amount: ${amount}\nReason: {reason}\nCustomer Tier: premium"""\n    )\n\n    # Act on the decision\n    if result.decision == "approve":\n        print(f"✓ Refund approved")\n        return True\n    else:\n        print(f"✗ Refund denied")\n        return False\n\n# Run it\nasyncio.run(handle_refund_request("cust_123", 150, "damaged"))'} />
+                  <CodeBlock language="python" code={'import asyncio\nimport signalops\n\n# Configure Signal\nsignalops.configure(api_key="sk_live_your_api_key_here")\n\nasync def handle_refund_request(customer_id, amount, reason):\n    # Ask Signal for a decision. Dict context is safest because Signal normalizes field names.\n    result = await signalops.escalate(\n        agent_id="customer-support-refunds",\n        question="Should I issue a refund?",\n        context={\n            "customer_id": customer_id,\n            "order_amount": amount,\n            "reason": reason,\n            "customer_tier": "premium"\n        }\n    )\n\n    # Act on the decision\n    if result.decision == "approve":\n        print(f"✓ Refund approved")\n        return True\n    else:\n        print(f"✗ Refund denied")\n        return False\n\n# Run it\nasyncio.run(handle_refund_request("cust_123", 150, "damaged"))'} />
                 </div>
               </Reveal>
             </section>
@@ -1868,7 +1869,7 @@ Visit ${DASHBOARD_URL} for more information.
                   <p style={{ marginTop: "1rem", color: "#4a4a47", fontSize: "1.0625rem", lineHeight: 1.8 }}>
                     Or add it to your requirements.txt:
                   </p>
-                  <CodeBlock language="text" code="signalops>=1.0.0" />
+                  <CodeBlock language="text" code="signalops>=0.2.0" />
                 </div>
 
                 <div style={{ marginBottom: "3rem" }}>
@@ -1936,13 +1937,13 @@ Visit ${DASHBOARD_URL} for more information.
                 <div>
                   <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.escalate()</h3>
                   <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Escalate a decision to Signal. Returns a decision from an existing rule, or waits for human review.</p>
-                  <CodeBlock language="python" code={'result = await signalops.escalate(\n    agent_id="customer-support-refunds",\n    question="Should I issue a refund?",\n    context="Customer ID: cust_123\\nAmount: $150",\n    action="refund_request",  # optional\n    metadata={"customer_id": "cust_123"},  # optional\n    timeout_seconds=600  # optional, default 3600\n)'} />
+                  <CodeBlock language="python" code={'result = await signalops.escalate(\n    agent_id="customer-support-refunds",\n    question="Should I issue a refund?",\n    context={\n        "customer_id": "cust_123",\n        "order_amount": 150,\n        "author": "support-agent"\n    },\n    action="refund_request",  # optional\n    timeout_seconds=600  # optional, default 3600\n)'} />
                   <div style={{ marginTop: "1.5rem", marginBottom: "1.5rem" }}>
                     <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem", color: "#0d0d0b" }}>Parameters:</h4>
                     <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
                       <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>agent_id</code> (str, required): Unique identifier for your agent</li>
                       <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>question</code> (str, required): The decision question</li>
-                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>context</code> (str, required): Relevant context for the decision</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>context</code> (dict or str, required): Relevant context for the decision. Dicts are recommended because Signal normalizes field names before matching rules.</li>
                       <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>action</code> (str, optional): Action being requested</li>
                       <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>metadata</code> (dict, optional): Additional structured data</li>
                       <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>timeout_seconds</code> (int, optional): Max wait time (default: 3600)</li>

@@ -28,7 +28,7 @@
           <label class="text-xs font-semibold uppercase tracking-wide text-stone-500" for="new-org-name">Organization name</label>
           <input id="new-org-name" x-model="newOrgName" :disabled="!canCreateOrganization()" placeholder="Acme Corp" class="mt-2 h-11 w-full border-b border-stone-300 bg-transparent text-sm outline-none focus:border-stone-950 disabled:text-stone-400" />
         </div>
-        <button @click="createOrganization()" :disabled="!canCreateOrganization()" class="h-11 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300 disabled:no-underline">Create</button>
+        <button @click="createOrganization()" :disabled="!canCreateOrganization()" :title="canCreateOrganization() ? '' : 'Upgrade in Account Settings to create more organizations.'" class="h-11 text-sm font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300 disabled:no-underline">Create</button>
       </div>
       <p x-show="!canCreateOrganization()" x-cloak class="mt-3 text-sm text-stone-500">Your current plan includes <span x-text="keyLimitLabel(data.plan.org_limit)"></span> organization<span x-show="data.plan.org_limit !== 1">s</span>. Upgrade in Account Settings to add more.</p>
     </div>
@@ -44,14 +44,14 @@
             </div>
           </button>
           <div class="mt-2 min-h-8">
-            <button x-show="confirmDeleteOrgId !== org.id" @click="confirmDeleteOrgId = org.id" class="text-sm font-semibold text-stone-400 underline-offset-4 hover:text-stone-950 hover:underline">Delete</button>
+            <button x-show="confirmDeleteOrgId !== org.id" @click.stop.prevent="confirmDeleteOrgId = org.id" class="text-sm font-semibold text-stone-400 underline-offset-4 hover:text-stone-950 hover:underline">Delete</button>
             <div x-show="confirmDeleteOrgId === org.id" x-cloak class="flex flex-wrap items-center gap-3 text-sm">
               <span class="text-stone-500">Delete this organization?</span>
-              <button @click="deleteOrganization(org)" :disabled="deletingOrgId === org.id" class="font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300">
+              <button @click.stop.prevent="deleteOrganization(org)" :disabled="Boolean(deletingOrgId)" class="font-semibold text-stone-950 underline-offset-4 hover:underline disabled:text-stone-300">
                 <span x-show="deletingOrgId !== org.id">Delete</span>
                 <span x-show="deletingOrgId === org.id" x-cloak>Deleting...</span>
               </button>
-              <button @click="confirmDeleteOrgId = ''" :disabled="deletingOrgId === org.id" class="font-semibold text-stone-400 underline-offset-4 hover:text-stone-950 hover:underline disabled:text-stone-300">Cancel</button>
+              <button @click.stop.prevent="confirmDeleteOrgId = ''" :disabled="Boolean(deletingOrgId)" class="font-semibold text-stone-400 underline-offset-4 hover:text-stone-950 hover:underline disabled:text-stone-300">Cancel</button>
             </div>
           </div>
         </div>
@@ -113,6 +113,7 @@
         const selected = await window.signalSelectOrg(org.id, { by: "org_id", reload: false });
         if (!selected) {
           this.orgMessage = "Could not open that organization.";
+          window.signalToast(this.orgMessage, "error");
           return;
         }
         window.location.href = "/dashboard/overview";
@@ -121,6 +122,7 @@
         const organizationName = this.newOrgName.trim();
         if (!organizationName) {
           this.orgMessage = "Enter an organization name first.";
+          window.signalToast(this.orgMessage, "error");
           return;
         }
         const response = await fetch("/admin/setup", {
@@ -131,6 +133,7 @@
         });
         if (!response.ok) {
           this.orgMessage = await this.failureMessage(response, `Could not create organization (${response.status}).`);
+          window.signalToast(this.orgMessage, "error");
           return;
         }
         const result = await response.json();
@@ -138,24 +141,31 @@
         this.createOpen = false;
         this.data = result.settings;
         window.signalRememberOrg(result.organization || this.data.organization);
+        window.signalToast("Organization created.", "success");
         window.location.href = "/dashboard/overview";
       },
       async deleteOrganization(org) {
+        if (this.deletingOrgId) return;
         this.deletingOrgId = org.id;
-        const response = await fetch(`/admin/organizations/${org.id}`, {
-          method: "DELETE",
-          credentials: "include",
-        });
-        this.deletingOrgId = "";
-        if (!response.ok) {
-          this.orgMessage = await this.failureMessage(response, `Could not delete organization (${response.status}).`);
-          return;
+        try {
+          const response = await fetch(`/admin/organizations/${org.id}`, {
+            method: "DELETE",
+            credentials: "include",
+          });
+          if (!response.ok) {
+            this.orgMessage = await this.failureMessage(response, `Could not delete organization (${response.status}).`);
+            window.signalToast(this.orgMessage, "error");
+            return;
+          }
+          const result = await response.json();
+          this.data = result.settings;
+          this.confirmDeleteOrgId = "";
+          sessionStorage.removeItem("signal_org_name");
+          this.orgMessage = result.message || "Organization deleted.";
+          window.signalToast(this.orgMessage, "success");
+        } finally {
+          this.deletingOrgId = "";
         }
-        const result = await response.json();
-        this.data = result.settings;
-        this.confirmDeleteOrgId = "";
-        sessionStorage.removeItem("signal_org_name");
-        this.orgMessage = result.message || "Organization deleted.";
       },
       formatDate(dateStr) {
         if (!dateStr) return "recently";

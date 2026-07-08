@@ -304,17 +304,25 @@
       message: "",
       editingRuleId: null,
       edits: {},
-      refreshInterval: null,
+      refreshTimer: null,
+      refreshDelayMs: 5000,
       actionStates: {},
       init() {
         this.load(true);
-        // Auto-refresh every 5 seconds
-        this.refreshInterval = setInterval(() => this.load(false), 5000);
+        this.scheduleRefresh();
+        window.addEventListener("beforeunload", () => this.destroy());
       },
       destroy() {
-        if (this.refreshInterval) {
-          clearInterval(this.refreshInterval);
+        if (this.refreshTimer) {
+          clearTimeout(this.refreshTimer);
         }
+      },
+      scheduleRefresh(delay = this.refreshDelayMs) {
+        if (this.refreshTimer) clearTimeout(this.refreshTimer);
+        this.refreshTimer = setTimeout(async () => {
+          await this.load(false);
+          this.scheduleRefresh();
+        }, delay);
       },
       headers() {
         return {
@@ -342,20 +350,28 @@
         if (showLoading) {
           this.loading = true;
         }
-        const response = await fetch("/admin/review", {
-          credentials: "include",
-          headers: this.headers(),
-        });
-        if (showLoading) {
-          this.loading = false;
+        try {
+          const response = await fetch("/admin/review", {
+            credentials: "include",
+            headers: this.headers(),
+          });
+          if (!response.ok) {
+            this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
+            this.message = await this.failureMessage(response, `Could not load review queue (${response.status}).`);
+            return;
+          }
+          const data = await response.json();
+          this.items = data.items || [];
+          this.refreshDelayMs = 5000;
+          this.message = "";
+        } catch {
+          this.refreshDelayMs = Math.min(this.refreshDelayMs * 2, 60000);
+          this.message = "Connection interrupted. Retrying automatically.";
+        } finally {
+          if (showLoading) {
+            this.loading = false;
+          }
         }
-        if (!response.ok) {
-          this.message = await this.failureMessage(response, `Could not load review queue (${response.status}).`);
-          return;
-        }
-        const data = await response.json();
-        this.items = data.items || [];
-        this.message = "";
       },
       setActionState(key, state) {
         this.actionStates[key] = state;
@@ -381,9 +397,11 @@
           const errorMsg = await this.failureMessage(response, `Action failed (${response.status}).`);
           if (actionKey) {
             this.setActionState(actionKey, errorMsg);
+            window.signalToast(errorMsg, "error");
             setTimeout(() => this.setActionState(actionKey, ""), 3000);
           } else {
             this.message = errorMsg;
+            window.signalToast(errorMsg, "error");
           }
           await this.load(false);
           return false;
@@ -393,6 +411,7 @@
           this.setActionState(actionKey, "");
         }
         this.message = "";
+        window.signalToast("Review action saved.", "success");
         return true;
       },
       decide(id, decision) {

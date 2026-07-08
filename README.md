@@ -282,19 +282,16 @@ pip install -e ./sdk
 
 ### Understanding the `context` Parameter
 
-The `context` parameter is **always a string** in the API. There are two recommended formats:
+In the SDK, pass `context` as a dictionary whenever possible. Signal normalizes field names before matching rules, so variants like `author`, `author_name`, and `author.name` collapse to one canonical field.
 
 #### Simple String (for basic cases)
 ```python
 context="Customer Jane Smith is requesting a refund on order #1234. Order is 47 days old."
 ```
 
-#### Structured JSON String (recommended for rule matching)
+#### Structured Context (recommended for rule matching)
 ```python
-import json
-
-# ✅ CORRECT - Convert dict to JSON string
-context_data = {
+context = {
     "customer": {
         "name": "Jane Smith",
         "tier": "gold"
@@ -305,14 +302,11 @@ context_data = {
         "value": 189.00
     }
 }
-context = json.dumps(context_data)
-
-# ❌ WRONG - Passing dict directly will cause validation error
-# context = context_data  # This will fail!
 ```
 
-**Why use structured JSON?**
+**Why use structured context?**
 - Rules can match specific fields (e.g., `customer.tier == "gold"`)
+- The SDK and API normalize common aliases before matching
 - More precise than parsing free text
 - Easier to debug when rules don't match
 
@@ -320,15 +314,14 @@ context = json.dumps(context_data)
 
 ```python
 import asyncio
-import json
-from signal_sdk import Signal
+import signalops
 
 
 async def main():
-    signal = Signal(api_key="sk_live_...", base_url="http://localhost:8000")
+    signalops.configure(api_key="sk_live_...", base_url="http://localhost:8000")
 
     # Example 1: Simple string context
-    result = await signal.escalate(
+    result = await signalops.escalate(
         context="Customer Jane Smith is requesting a refund on order #1234. Order is 47 days old.",
         question="Should I approve or reject this refund?",
         agent_id="support-agent",
@@ -340,7 +333,7 @@ async def main():
     )
     print(f"Decision: {result.decision}")
 
-    # Example 2: Structured JSON context (recommended)
+    # Example 2: Structured context (recommended)
     context_data = {
         "deployment_id": "deploy-007",
         "change_type": "hotfix",
@@ -352,8 +345,8 @@ async def main():
         "test_coverage": 95.0
     }
 
-    result = await signal.escalate(
-        context=json.dumps(context_data),  # Convert to JSON string
+    result = await signalops.escalate(
+        context=context_data,
         question="Should this deployment be approved?",
         agent_id="deploy-agent",
         metadata={"risk_level": "low"},
@@ -361,10 +354,10 @@ async def main():
     print(f"Decision: {result.decision}")
 
     # Check against saved rules
-    check = await signal.check(
+    check = await signalops.check(
         action="approve_deployment",
         agent_id="deploy-agent",
-        context=context_data,  # SDK handles JSON conversion
+        context=context_data,
     )
     print(f"Result: {check.result} - {check.reasoning}")
 
@@ -402,7 +395,7 @@ const result1 = await signal.escalate({
   metadata: { customerTier: "gold", orderValue: 189.0 },
 });
 
-// Example 2: Structured JSON context (recommended)
+// Example 2: Structured context (recommended)
 const contextData = {
   deployment_id: "deploy-007",
   change_type: "hotfix",

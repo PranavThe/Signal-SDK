@@ -3,10 +3,11 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from signal_sdk.client import CheckResult, EscalationResult, Signal
+from signal_sdk.client import CheckResult, EscalationResult, Signal, canonicalize_field_name, normalize_context
 
 
 DEFAULT_BASE_URL = "https://signal-omega-tan.vercel.app"
+__version__ = "0.2.0"
 
 _api_key: str | None = None
 _base_url: str | None = None
@@ -29,7 +30,7 @@ def client(api_key: str | None = None, base_url: str | None = None) -> Signal:
 
 
 async def escalate(
-    context: str,
+    context: str | dict[str, Any],
     question: str,
     agent_id: str,
     metadata: dict[str, Any] | None = None,
@@ -68,8 +69,11 @@ __all__ = [
     "CheckResult",
     "EscalationResult",
     "Signal",
+    "__version__",
+    "canonicalize_field_name",
     "check",
     "client",
     "configure",
     "escalate",
+    "normalize_context",
 ]

@@ -128,10 +128,13 @@
         this.upgradingTier = "";
         if (!response.ok) {
           this.subscriptionMessage = await this.failureMessage(response, `Could not update subscription (${response.status}).`);
+          window.signalToast(this.subscriptionMessage, "error");
           return;
         }
         const data = await response.json();
-        window.location.href = data.url;
+        window.open(data.url, "_blank", "noopener,noreferrer");
+        this.subscriptionMessage = "Subscription page opened in a new tab.";
+        window.signalToast(this.subscriptionMessage, "success");
       },
     };
   }
