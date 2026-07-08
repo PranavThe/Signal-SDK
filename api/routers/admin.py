@@ -287,10 +287,21 @@ def _activity_item_payload(kind: str, item: Any, rule: Rule | None = None) -> di
             "context": item.context,
         }
     if kind == "escalation":
+        # Determine kind based on resolution status
+        if item.finalized_at is None:
+            kind_label = "Escalated"
+            tone = "warning"
+        elif item.auto_resolved:
+            kind_label = "Auto-handled"
+            tone = "success"
+        else:
+            kind_label = "Resolved"
+            tone = "neutral"
+
         return {
             "id": str(item.id),
-            "kind": "Escalated" if item.finalized_at is None else "Resolved",
-            "tone": "warning" if item.finalized_at is None else "neutral",
+            "kind": kind_label,
+            "tone": tone,
             "title": item.question,
             "summary": item.context,
             "time": _time_ago(item.created_at),
@@ -299,6 +310,7 @@ def _activity_item_payload(kind: str, item: Any, rule: Rule | None = None) -> di
             "status": item.status,
             "human_decision": item.human_decision,
             "rule_id": _serialize(item.rule_id),
+            "auto_resolved": item.auto_resolved,
             "context": item.metadata_,
         }
     return {
