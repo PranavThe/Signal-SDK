@@ -141,6 +141,60 @@ def _merge_value(existing: Any, incoming: Any) -> Any:
     return values[:5]
 
 
+def _coerce_to_schema_type(value: Any, expected_type: str | None) -> Any:
+    """Coerce a value to match the expected schema type for consistency.
+
+    This ensures that fields always have consistent types across escalations.
+    For example, 'cwes' should always be an array, never sometimes string/sometimes array.
+    """
+    if expected_type is None or expected_type == "unknown":
+        return value
+
+    # Array type: always return as array
+    if expected_type == "array":
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        # Single value → wrap in array for consistency
+        return [value]
+
+    # String type: convert to string if not already
+    if expected_type == "string":
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list) and len(value) == 1:
+            # Single-element array → unwrap to string
+            return str(value[0])
+        return str(value) if value is not None else ""
+
+    # Number types
+    if expected_type in ("integer", "number"):
+        if isinstance(value, (int, float)):
+            return value
+        if isinstance(value, str):
+            try:
+                return int(value) if expected_type == "integer" else float(value)
+            except ValueError:
+                pass
+        return value
+
+    # Boolean type
+    if expected_type == "boolean":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            lower = value.lower()
+            if lower in ("true", "yes", "1"):
+                return True
+            if lower in ("false", "no", "0"):
+                return False
+        return value
+
+    # Default: return as-is
+    return value
+
+
 def _looks_like_comma_list(parts: list[str]) -> bool:
     if len(parts) < 2:
         return False
@@ -377,16 +431,29 @@ class ContextSchemaService:
     ) -> ContextNormalizationResult:
         raw_flat = _flatten_value(context or {})
         aliases = await self.alias_map(session, org_id)
+
+        # Load learned field types for schema enforcement
+        fields = (
+            await session.execute(select(ContextField).where(ContextField.org_id == org_id))
+        ).scalars().all()
+        field_types = {field.canonical_name: field.field_type for field in fields}
+
         normalized: dict[str, Any] = {}
         alias_hits: dict[str, str] = {}
         warnings: list[str] = []
 
         for raw_key, value in raw_flat.items():
             canonical_key = aliases.get(canonicalize_scalar_field(raw_key), canonicalize_scalar_field(raw_key))
+
+            # Coerce value to match learned schema type for consistency
+            expected_type = field_types.get(canonical_key)
+            coerced_value = _coerce_to_schema_type(value, expected_type)
+
             if canonical_key in normalized:
-                normalized[canonical_key] = _merge_value(normalized[canonical_key], value)
+                normalized[canonical_key] = _merge_value(normalized[canonical_key], coerced_value)
             else:
-                normalized[canonical_key] = value
+                normalized[canonical_key] = coerced_value
+
             if canonical_key != raw_key:
                 alias_hits[raw_key] = canonical_key
 
