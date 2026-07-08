@@ -1,3 +1,16 @@
+.env
+.env.*
+!.env.example
+.master-test.env
+.vercel
+api/.vercel
+signal-website/.vercel
+.claude
+node_modules
+signal-website/node_modules
+signal-website/dist
+sdk/dist
+sdk/*.egg-info
 sdk-ts/node_modules
 sdk-ts/dist
 **/__pycache__
