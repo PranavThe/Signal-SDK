@@ -498,10 +498,10 @@ export default function App() {
               The Integration
             </p>
             <p className="text-3xl md:text-4xl font-extrabold leading-tight tracking-tight mb-6" style={{ fontFamily: "'Manrope', sans-serif" }}>
-              Two lines.
+              One function call.
             </p>
             <p className="text-lg font-light leading-relaxed text-muted-foreground" style={{ fontFamily: "'Manrope', sans-serif" }}>
-              {"That's the entire integration. Instrument your agent in five minutes. The rest is automatic."}
+              {"That's the entire integration. Add escalate() to your agent. Everything else is automatic."}
             </p>
           </Reveal>
         </div>
