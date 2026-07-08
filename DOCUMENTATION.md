@@ -11,6 +11,10 @@ Signal is a human-in-the-loop decision framework for AI agents. It allows you to
 - **Progressive Autonomy**: Track how autonomous your agents become over time
 - **Dashboard Management**: Web interface for reviewing decisions and managing rules
 - **Real-time Monitoring**: See agent decisions as they happen
+- **Context Validation**: Intelligent warnings about missing fields and normalization
+- **Auto-Enrichment**: Automatically adds environment metadata to context
+- **Dev Mode**: Enhanced debugging with detailed logging
+- **Health Monitoring**: Proactive alerts for stale rules and pending escalations
 
 ---
 
@@ -263,9 +267,18 @@ import signalops
 
 signalops.configure(
     api_key="sk_live_your_api_key_here",
-    base_url="https://your-signal-deployment.com"  # Optional
+    base_url="https://your-signal-deployment.com",  # Optional
+    dev_mode=False,  # Optional: Enable debug logging
+    auto_enrich=True  # Optional: Auto-add environment metadata (default: True)
 )
 ```
+
+**Parameters:**
+
+- `api_key` (str): Your Signal API key
+- `base_url` (str, optional): Custom deployment URL
+- `dev_mode` (bool, optional): Enable debug logging for development (default: False)
+- `auto_enrich` (bool, optional): Automatically add timestamp and environment to context (default: True)
 
 ### escalate()
 
@@ -305,6 +318,19 @@ An `EscalationResult` object with:
 - `rule_id` (str|None): ID of the rule that made this decision (if auto-resolved)
 - `auto_resolved` (bool): Whether this was resolved by a rule without human review
 
+**Context Warnings:**
+
+Signal automatically validates your context and displays warnings via Python's logging module. These warnings include:
+
+- Field normalization (e.g., "user_email" → "email")
+- Missing important fields that appear in 80%+ of similar escalations
+- Type mismatches with example values
+
+Example warning:
+```
+WARNING: Context validation: Missing field 'customer_tier' - this field appears in 80%+ of similar escalations (example: premium)
+```
+
 ### check()
 
 Check if an action should be allowed based on existing rules (without escalating):
@@ -333,6 +359,7 @@ A `CheckResult` object with:
 - `rule_id` (str|None): ID of the matching rule (if any)
 - `reasoning` (str): Explanation for the result
 - `modification` (dict|None): Any suggested modifications to the action
+- `context_warnings` (list[str]): List of validation warnings about the context
 
 ### Context Best Practices
 
@@ -364,6 +391,88 @@ context = "User user_12345 is requesting a password reset. Account is 30 days ol
 The field: value format displays as a clean grid in the dashboard, while paragraph format shows as plain text.
 
 Use the `metadata` parameter for structured data you want to store but don't need prominently displayed.
+
+---
+
+## Advanced Features
+
+### Dev Mode
+
+Enable dev mode during development to see detailed logging of all Signal operations:
+
+```python
+import signalops
+import logging
+
+# Configure logging to see Signal debug output
+logging.basicConfig(level=logging.DEBUG)
+
+# Enable dev mode
+signalops.configure(
+    api_key="sk_live_...",
+    dev_mode=True
+)
+
+# Now you'll see debug logs for all operations
+result = await signalops.escalate(...)
+# DEBUG: Creating escalation: agent_id=support-bot, action=approve_refund
+# DEBUG: Context: {"customer_tier": "premium", "amount": 150}...
+# WARNING: Context validation: Missing field 'email' - appears in 80%+ of escalations
+# DEBUG: Received 1 context warnings from API
+```
+
+Dev mode is automatically disabled in production and only logs to stdout/stderr.
+
+### Auto-Enrichment
+
+By default, Signal automatically enriches your context with environment metadata:
+
+```python
+# You send:
+context = {"customer_id": "cust_123", "amount": 150}
+
+# Signal automatically adds:
+{
+    "customer_id": "cust_123",
+    "amount": 150,
+    "_signal_timestamp": "2026-07-07T18:30:00Z",
+    "_signal_environment": "production"  # from ENVIRONMENT env var
+}
+```
+
+This helps with debugging and provides additional context for rule matching. To disable:
+
+```python
+signalops.configure(
+    api_key="sk_live_...",
+    auto_enrich=False  # Disable automatic enrichment
+)
+```
+
+### Context Validation
+
+Signal learns from your historical escalations to provide intelligent validation warnings:
+
+**Field Normalization:**
+```python
+# You send: {"user_email": "alice@company.com"}
+# Signal normalizes to: {"email": "alice@company.com"}
+# Warning: "Field 'user_email' was normalized to 'email'"
+```
+
+**Missing Important Fields:**
+```python
+# Signal notices 'customer_tier' appears in 90% of your escalations
+# Warning: "Missing field 'customer_tier' - appears in 80%+ of escalations (example: premium)"
+```
+
+**Type Mismatches:**
+```python
+# Field 'amount' is usually a number, but you sent a string
+# Warning: "Field 'amount' expected type 'integer' but got 'string'. Value: '150'"
+```
+
+These warnings help you maintain consistent context across your agents and improve rule matching.
 
 ---
 
@@ -587,8 +696,25 @@ For questions, issues, or feature requests:
 
 ## Changelog
 
-### Latest Release
+### Latest Release (July 2026)
 
+**Robustness & Developer Experience:**
+- Context validation with intelligent warnings
+- Missing field detection (learns from 80%+ occurrence in escalations)
+- Automatic field normalization (e.g., user_email → email)
+- Type validation with example values
+- Dev mode with detailed debug logging
+- Auto-enrichment of context with timestamps and environment
+- Health check endpoint (`/admin/health`) for monitoring
+- Rule quality validation endpoint for confidence scoring
+
+**SDK Enhancements:**
+- Python SDK: `dev_mode` and `auto_enrich` parameters
+- TypeScript SDK: `devMode` and `autoEnrich` options
+- Automatic warning display via logging
+- Better error messages with actionable suggestions
+
+**Dashboard:**
 - Card-based rule visualization
 - Real-time search and filtering on Rules and Escalations
 - Structured context display with field-value pairs
