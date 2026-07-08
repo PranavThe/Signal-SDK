@@ -466,28 +466,28 @@ export default function App() {
               </div>
               <pre className="p-4 text-xs leading-[1.9] overflow-x-auto sm:p-7 sm:text-sm" style={{ fontFamily: "'Geist Mono', monospace" }}>
                 <code>
-                  <span style={{ color: "#4a4a47" }}>{"# Escalate to human when uncertain\n"}</span>
+                  <span style={{ color: "#4a4a47" }}>{"# Auto-resolves via rules, or escalates to human\n"}</span>
+                  <span style={{ color: "#9a9a97" }}>{"result "}</span>
+                  <span style={{ color: "#6a6a67" }}>{"= "}</span>
                   <span style={{ color: "#9a9a97" }}>{"await "}</span>
                   <span style={{ color: "#f7f7f5" }}>{"signalops"}</span>
                   <span style={{ color: "#6a6a67" }}>{"."}</span>
                   <span style={{ color: "#efefed" }}>{"escalate"}</span>
-                  <span style={{ color: "#6a6a67" }}>{"("}</span>
-                  <span style={{ color: "#9a9a97" }}>{"context"}</span>
-                  <span style={{ color: "#6a6a67" }}>{", "}</span>
+                  <span style={{ color: "#6a6a67" }}>{"(\n    "}</span>
+                  <span style={{ color: "#9a9a97" }}>{"agent_id"}</span>
+                  <span style={{ color: "#6a6a67" }}>=</span>
+                  <span style={{ color: "#7c9a6e" }}>{'"support-bot"'}</span>
+                  <span style={{ color: "#6a6a67" }}>{",\n    "}</span>
                   <span style={{ color: "#9a9a97" }}>{"question"}</span>
-                  <span style={{ color: "#6a6a67" }}>{", "}</span>
-                  <span style={{ color: "#9a9a97" }}>{"metadata"}</span>
-                  <span style={{ color: "#6a6a67" }}>{")\n\n"}</span>
-                  <span style={{ color: "#4a4a47" }}>{"# Check against learned rules\n"}</span>
-                  <span style={{ color: "#9a9a97" }}>{"await "}</span>
-                  <span style={{ color: "#f7f7f5" }}>{"signalops"}</span>
-                  <span style={{ color: "#6a6a67" }}>{"."}</span>
-                  <span style={{ color: "#efefed" }}>{"check"}</span>
-                  <span style={{ color: "#6a6a67" }}>{"("}</span>
-                  <span style={{ color: "#9a9a97" }}>{"action"}</span>
-                  <span style={{ color: "#6a6a67" }}>{", "}</span>
+                  <span style={{ color: "#6a6a67" }}>=</span>
+                  <span style={{ color: "#7c9a6e" }}>{'"Should I approve this?"'}</span>
+                  <span style={{ color: "#6a6a67" }}>{",\n    "}</span>
                   <span style={{ color: "#9a9a97" }}>{"context"}</span>
-                  <span style={{ color: "#6a6a67" }}>{")"}</span>
+                  <span style={{ color: "#6a6a67" }}>=</span>
+                  <span style={{ color: "#9a9a97" }}>{"data"}</span>
+                  <span style={{ color: "#6a6a67" }}>{"\n)\n\n"}</span>
+                  <span style={{ color: "#4a4a47" }}>{"# Returns immediately if rule exists\n"}</span>
+                  <span style={{ color: "#4a4a47" }}>{"# Waits for human if no rule\n"}</span>
                 </code>
               </pre>
             </div>
