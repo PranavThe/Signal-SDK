@@ -17,6 +17,7 @@ from api.models import Escalation, PolicyCheckLog, Rule
 from api.rate_limit import limiter
 from api.schemas import EscalationCreate, EscalationCreateResponse, EscalationStateResponse
 from api.services.context_schema_service import ContextSchemaService, context_from_escalation_text
+from api.services.context_service import ContextValidator
 from api.services.escalation_pipeline import prepare_escalation_semantics, prepare_escalation_slack_card
 from api.services.redis_service import publish_escalation_created, publish_escalation_response, subscribe_escalation_events
 from api.services.webhook_service import send_webhook_event_by_org_id
@@ -75,6 +76,7 @@ async def create_escalation(
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_key),
 ) -> EscalationCreateResponse:
+    # Normalize context using ContextSchemaService
     context_result = await ContextSchemaService().normalize(
         session,
         auth.org_id,
@@ -82,6 +84,16 @@ async def create_escalation(
         learn=True,
         source="escalation",
     )
+
+    # Additional validation using ContextValidator
+    all_warnings = list(context_result.warnings)
+    validator = ContextValidator(session, auth.org_id)
+    _, validation_warnings = await validator.validate_context(
+        context_result.normalized,
+        normalize=False,  # Already normalized
+    )
+    all_warnings.extend(validation_warnings)
+
     escalation = Escalation(
         context=payload.context,
         question=payload.question,
@@ -139,7 +151,11 @@ async def create_escalation(
         },
     )
 
-    return EscalationCreateResponse(escalation_id=escalation.id, status=escalation.status)
+    return EscalationCreateResponse(
+        escalation_id=escalation.id,
+        status=escalation.status,
+        context_warnings=all_warnings,
+    )
 
 
 @router.get("/{escalation_id}", response_model=EscalationStateResponse)

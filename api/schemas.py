@@ -60,6 +60,7 @@ class EscalationCreate(BaseModel):
 class EscalationCreateResponse(BaseModel):
     escalation_id: UUID
     status: str
+    context_warnings: list[str] = Field(default_factory=list, description="Warnings about context validation and normalization")
 
 
 class EscalationStateResponse(BaseModel):

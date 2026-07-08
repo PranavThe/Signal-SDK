@@ -4,6 +4,8 @@ import fetch, { type HeadersInit, type Response as FetchResponse } from "node-fe
 export interface SignalOptions {
   apiKey: string;
   baseUrl?: string;
+  devMode?: boolean;
+  autoEnrich?: boolean;
 }
 
 export interface EscalateParams {
@@ -110,10 +112,34 @@ export function normalizeContext(context: Record<string, unknown>): {
 export class Signal {
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  private readonly devMode: boolean;
+  private readonly autoEnrich: boolean;
 
   constructor(options: SignalOptions) {
     this.apiKey = options.apiKey;
     this.baseUrl = (options.baseUrl ?? "http://localhost:8000").replace(/\/+$/, "");
+    this.devMode = options.devMode ?? false;
+    this.autoEnrich = options.autoEnrich ?? true;
+  }
+
+  private enrichContext(context: Record<string, unknown>): Record<string, unknown> {
+    if (!this.autoEnrich) return context;
+
+    const enriched = { ...context };
+    enriched._signal_timestamp ??= new Date().toISOString();
+    enriched._signal_environment ??= process.env.NODE_ENV ?? process.env.ENVIRONMENT ?? "unknown";
+
+    return enriched;
+  }
+
+  private log(message: string, ...args: unknown[]): void {
+    if (this.devMode) {
+      console.log(`[Signal] ${message}`, ...args);
+    }
+  }
+
+  private warn(message: string, ...args: unknown[]): void {
+    console.warn(`[Signal] ${message}`, ...args);
   }
 
   async escalate(params: EscalateParams): Promise<EscalationResult> {
@@ -123,13 +149,18 @@ export class Signal {
     let outboundContext = params.context;
     const outboundMetadata = { ...(params.metadata ?? {}) };
     if (params.context && typeof params.context === "object") {
-      const { normalizedContext, warnings } = normalizeContext(params.context);
+      // Auto-enrich context
+      const enrichedContext = this.enrichContext(params.context);
+      const { normalizedContext, warnings } = normalizeContext(enrichedContext);
       outboundContext = JSON.stringify(normalizedContext);
       outboundMetadata._signal_raw_context ??= params.context;
       if (warnings.length > 0) {
         outboundMetadata._signal_context_warnings ??= warnings;
       }
     }
+
+    this.log(`Creating escalation: agentId=${params.agentId}, action=${params.action ?? "none"}`);
+    this.log(`Context: ${typeof outboundContext === "string" ? outboundContext.substring(0, 200) : outboundContext}...`);
 
     const response = await fetch(`${this.baseUrl}/v1/escalations`, {
       method: "POST",
@@ -143,7 +174,16 @@ export class Signal {
       }),
     });
     await this.assertOk(response);
-    const created = (await response.json()) as { escalation_id: string };
+    const created = (await response.json()) as { escalation_id: string; context_warnings?: string[] };
+
+    // Display context warnings from API
+    const apiWarnings = created.context_warnings ?? [];
+    if (apiWarnings.length > 0) {
+      for (const warning of apiWarnings) {
+        this.warn(`Context validation: ${warning}`);
+      }
+      this.log(`Received ${apiWarnings.length} context warnings from API`);
+    }
 
     try {
       return await this.waitForStream(created.escalation_id, deadline);
@@ -153,7 +193,13 @@ export class Signal {
   }
 
   async check(params: CheckParams): Promise<CheckResult> {
-    const { normalizedContext, warnings } = normalizeContext(params.context);
+    // Auto-enrich context
+    const enrichedContext = this.enrichContext(params.context);
+    const { normalizedContext, warnings } = normalizeContext(enrichedContext);
+
+    this.log(`Checking policy: action=${params.action}, agentId=${params.agentId}`);
+    this.log(`Normalized context: ${JSON.stringify(normalizedContext).substring(0, 200)}...`);
+
     const response = await fetch(`${this.baseUrl}/v1/check`, {
       method: "POST",
       headers: this.jsonHeaders(),
@@ -171,12 +217,18 @@ export class Signal {
       modification: Record<string, unknown> | null;
       context_warnings?: string[];
     };
+
+    const allWarnings = [...warnings, ...(data.context_warnings ?? [])];
+    if (allWarnings.length > 0) {
+      this.log(`Check returned ${allWarnings.length} context warnings`);
+    }
+
     return {
       result: data.result,
       ruleId: data.rule_id,
       reasoning: data.reasoning,
       modification: data.modification,
-      contextWarnings: [...warnings, ...(data.context_warnings ?? [])],
+      contextWarnings: allWarnings,
     };
   }
 

@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import os
 import re
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 from httpx_sse import aconnect_sse
+
+logger = logging.getLogger("signal")
 
 
 _NON_WORD_RE = re.compile(r"[^a-zA-Z0-9]+")
@@ -87,10 +92,33 @@ class CheckResult:
 
 
 class Signal:
-    def __init__(self, api_key: str, base_url: str = "http://localhost:8000"):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "http://localhost:8000",
+        dev_mode: bool = False,
+        auto_enrich: bool = True,
+    ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.headers = {"Authorization": f"Bearer {api_key}"}
+        self.dev_mode = dev_mode
+        self.auto_enrich = auto_enrich
+
+        if dev_mode:
+            logging.basicConfig(level=logging.DEBUG)
+            logger.setLevel(logging.DEBUG)
+
+    def _enrich_context(self, context: dict[str, Any]) -> dict[str, Any]:
+        """Auto-enrich context with environment metadata."""
+        if not self.auto_enrich:
+            return context
+
+        enriched = dict(context)
+        enriched.setdefault("_signal_timestamp", datetime.now(timezone.utc).isoformat())
+        enriched.setdefault("_signal_environment", os.environ.get("ENVIRONMENT", "unknown"))
+
+        return enriched
 
     async def escalate(
         self,
@@ -105,7 +133,9 @@ class Signal:
         outbound_context = context
         outbound_metadata = dict(metadata or {})
         if isinstance(context, dict):
-            normalized_context, warnings = normalize_context(context)
+            # Auto-enrich context
+            enriched_context = self._enrich_context(context)
+            normalized_context, warnings = normalize_context(enriched_context)
             outbound_context = json.dumps(normalized_context, sort_keys=True)
             outbound_metadata.setdefault("_signal_raw_context", context)
             if warnings:
@@ -114,6 +144,10 @@ class Signal:
         deadline = time.monotonic() + timeout_seconds
         timeout = httpx.Timeout(30.0, read=None)
         async with httpx.AsyncClient(base_url=self.base_url, headers=self.headers, timeout=timeout) as client:
+            if self.dev_mode:
+                logger.debug(f"Creating escalation: agent_id={agent_id}, action={action}")
+                logger.debug(f"Context: {outbound_context[:200]}...")
+
             response = await client.post(
                 "/v1/escalations",
                 json={
@@ -125,7 +159,16 @@ class Signal:
                 },
             )
             response.raise_for_status()
-            escalation_id = response.json()["escalation_id"]
+            response_data = response.json()
+            escalation_id = response_data["escalation_id"]
+
+            # Display context warnings from API
+            api_warnings = response_data.get("context_warnings", [])
+            if api_warnings:
+                for warning in api_warnings:
+                    logger.warning(f"Context validation: {warning}")
+                if self.dev_mode:
+                    logger.debug(f"Received {len(api_warnings)} context warnings from API")
 
             try:
                 return await self._wait_for_stream(client, escalation_id, deadline)
@@ -201,8 +244,15 @@ class Signal:
         context: dict[str, Any],
         agent_id: str,
     ) -> CheckResult:
-        normalized_context, local_warnings = normalize_context(context)
+        # Auto-enrich context
+        enriched_context = self._enrich_context(context)
+        normalized_context, local_warnings = normalize_context(enriched_context)
+
         async with httpx.AsyncClient(base_url=self.base_url, headers=self.headers, timeout=30.0) as client:
+            if self.dev_mode:
+                logger.debug(f"Checking policy: action={action}, agent_id={agent_id}")
+                logger.debug(f"Normalized context: {json.dumps(normalized_context, indent=2)[:200]}...")
+
             response = await client.post(
                 "/v1/check",
                 json={
@@ -214,10 +264,14 @@ class Signal:
             response.raise_for_status()
             data = response.json()
 
+        all_warnings = [*local_warnings, *(data.get("context_warnings") or [])]
+        if all_warnings and self.dev_mode:
+            logger.debug(f"Check returned {len(all_warnings)} context warnings")
+
         return CheckResult(
             result=data["result"],
             rule_id=data["rule_id"],
             reasoning=data["reasoning"],
             modification=data["modification"],
-            context_warnings=[*local_warnings, *(data.get("context_warnings") or [])],
+            context_warnings=all_warnings,
         )

@@ -2519,3 +2519,168 @@ async def submit_feedback(
         "message": "Feedback submitted successfully. Thank you for helping us improve Signal!",
         "feedback_id": str(feedback.id),
     }
+
+
+@router.get("/admin/health")
+async def get_org_health(
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> dict[str, Any]:
+    """Get detailed health metrics for the current organization."""
+    _ = dashboard_user
+
+    # Count rules by status
+    rule_counts = (
+        await session.execute(
+            select(Rule.status, func.count(Rule.id))
+            .where(Rule.org_id == auth.org_id)
+            .group_by(Rule.status)
+        )
+    ).all()
+    rules_by_status = {status: count for status, count in rule_counts}
+
+    # Count pending escalations
+    pending_escalations = (
+        await session.execute(
+            select(func.count(Escalation.id))
+            .where(
+                Escalation.org_id == auth.org_id,
+                Escalation.status == "pending",
+            )
+        )
+    ).scalar_one()
+
+    # Get stale rules (not triggered in 30 days)
+    thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
+    stale_rules = (
+        await session.execute(
+            select(func.count(Rule.id))
+            .where(
+                Rule.org_id == auth.org_id,
+                Rule.status == "active",
+                or_(
+                    Rule.last_triggered_at.is_(None),
+                    Rule.last_triggered_at < thirty_days_ago,
+                ),
+            )
+        )
+    ).scalar_one()
+
+    # Get average response time for recent checks
+    recent_checks = (
+        await session.execute(
+            select(PolicyCheckLog.created_at)
+            .where(PolicyCheckLog.org_id == auth.org_id)
+            .order_by(PolicyCheckLog.created_at.desc())
+            .limit(100)
+        )
+    ).scalars().all()
+
+    avg_response_time = 0
+    if len(recent_checks) >= 2:
+        # Calculate average time between checks as a proxy for response time
+        time_diffs = []
+        for i in range(len(recent_checks) - 1):
+            diff = (recent_checks[i] - recent_checks[i + 1]).total_seconds() * 1000
+            if diff < 10000:  # Ignore gaps > 10 seconds
+                time_diffs.append(diff)
+        if time_diffs:
+            avg_response_time = int(sum(time_diffs) / len(time_diffs))
+
+    # Compile warnings
+    warnings = []
+    if stale_rules > 0:
+        warnings.append(f"{stale_rules} active rule{'s' if stale_rules != 1 else ''} haven't triggered in 30 days")
+    if pending_escalations > 5:
+        warnings.append(f"{pending_escalations} escalations waiting for human decision")
+    if rules_by_status.get("pending_approval", 0) > 0:
+        warnings.append(f"{rules_by_status['pending_approval']} rule{'s' if rules_by_status['pending_approval'] != 1 else ''} pending approval")
+
+    return {
+        "api_reachable": True,
+        "rule_count": sum(rules_by_status.values()),
+        "active_rules": rules_by_status.get("active", 0),
+        "pending_rules": rules_by_status.get("pending_approval", 0) + rules_by_status.get("pending_edit", 0),
+        "avg_response_time_ms": avg_response_time,
+        "pending_escalations": pending_escalations,
+        "stale_rules": stale_rules,
+        "warnings": warnings,
+        "rules_by_status": rules_by_status,
+    }
+
+
+@router.post("/admin/rules/{rule_id}/validate")
+async def validate_rule_quality(
+    rule_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_dashboard_org_auth),
+    dashboard_user: DashboardUser = Depends(require_dashboard_user),
+) -> dict[str, Any]:
+    """Validate rule quality and return confidence score with recommendations."""
+    _ = dashboard_user
+    rule = await _get_org_rule(session, rule_id, auth.org_id)
+
+    issues = []
+    recommendations = []
+    confidence_score = 1.0
+
+    # Check if rule has been triggered
+    if rule.trigger_count == 0:
+        issues.append("Rule has never been triggered")
+        recommendations.append("Test the rule with sample context to ensure it works as expected")
+        confidence_score -= 0.3
+
+    # Check if rule is too broad (matches everything)
+    if not rule.structured_conditions or len(rule.structured_conditions) == 0:
+        issues.append("Rule has no conditions - will match everything")
+        recommendations.append("Add specific conditions to make the rule more targeted")
+        confidence_score -= 0.5
+
+    # Check extraction confidence
+    if rule.extraction_confidence < 0.7:
+        issues.append(f"Low extraction confidence ({rule.extraction_confidence:.0%})")
+        recommendations.append("Consider manually reviewing and editing the rule conditions")
+        confidence_score -= 0.2
+
+    # Check for conflicts with other active rules
+    conflicts = (
+        await session.execute(
+            select(RuleConflict)
+            .where(
+                or_(
+                    RuleConflict.rule_a_id == rule_id,
+                    RuleConflict.rule_b_id == rule_id,
+                ),
+                RuleConflict.resolved == False,  # noqa: E712
+            )
+        )
+    ).scalars().all()
+
+    if conflicts:
+        issues.append(f"{len(conflicts)} unresolved conflict{'s' if len(conflicts) > 1 else ''}")
+        recommendations.append("Review and resolve conflicts with other rules")
+        confidence_score -= 0.2 * min(len(conflicts), 3)
+
+    # Check staleness
+    if rule.last_triggered_at:
+        days_since = (datetime.now(UTC) - rule.last_triggered_at).days
+        if days_since > 30:
+            issues.append(f"Not triggered in {days_since} days")
+            recommendations.append("Consider archiving if no longer needed")
+            confidence_score -= 0.1
+
+    confidence_score = max(0.0, min(1.0, confidence_score))
+
+    return {
+        "rule_id": str(rule_id),
+        "confident": confidence_score >= 0.7,
+        "confidence_score": round(confidence_score, 2),
+        "issues": issues,
+        "recommendations": recommendations,
+        "summary": (
+            "Rule looks good!" if confidence_score >= 0.8
+            else "Rule has some issues that should be addressed" if confidence_score >= 0.5
+            else "Rule has significant quality issues"
+        ),
+    }
