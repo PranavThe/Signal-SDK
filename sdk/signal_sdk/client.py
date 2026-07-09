@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -28,6 +29,21 @@ _PERSON_SCALAR_FIELDS = {
     "submitter",
     "user",
 }
+
+
+@dataclass
+class Field:
+    """Schema field definition for context normalization."""
+
+    name: str
+    type: str = "string"
+    description: str = ""
+
+    def __post_init__(self):
+        """Validate and canonicalize field name."""
+        self.name = canonicalize_field_name(self.name)
+        if self.type not in ("string", "number", "integer", "boolean", "array", "object"):
+            raise ValueError(f"Invalid field type: {self.type}. Must be one of: string, number, integer, boolean, array, object")
 _BUILTIN_CONTEXT_ALIASES_RAW = {
     "allowed pairs": "route.pair.cap",
     "allowed_pairs": "route.pair.cap",
@@ -81,10 +97,34 @@ def _canonicalize_scalar_field(field: str) -> str:
 
 
 def _generated_aliases_for_field(canonical_name: str) -> set[str]:
+    """Generate all possible variations of a canonical field name.
+
+    Examples:
+        "vulnerability.cvss.score" generates:
+        - "vulnerability.cvss.score" (exact)
+        - "vulnerability_cvss_score" (underscore)
+        - "vulnerability-cvss-score" (dash)
+        - "vulnerabilityCvssScore" (camel)
+        - "cvss.score" (partial - last 2 parts)
+        - "cvss_score" (partial underscore)
+        - "score" (last part only)
+    """
     aliases = {canonical_name, canonical_name.replace(".", "_"), canonical_name.replace(".", "-")}
     parts = canonical_name.split(".")
+
+    # Add camelCase variation
     if len(parts) > 1:
         aliases.add("".join([parts[0], *[part.title() for part in parts[1:]]]))
+
+    # Add partial path variations (e.g., "cvss.score" from "vulnerability.cvss.score")
+    for i in range(1, len(parts)):
+        partial = ".".join(parts[i:])
+        aliases.add(partial)
+        aliases.add(partial.replace(".", "_"))
+        aliases.add(partial.replace(".", "-"))
+        if len(parts[i:]) > 1:
+            aliases.add("".join([parts[i], *[part.title() for part in parts[i + 1:]]]))
+
     return {alias for alias in aliases if alias}
 
 
@@ -101,10 +141,78 @@ def builtin_context_aliases() -> dict[str, str]:
     return aliases
 
 
-def normalize_context(context: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+def _coerce_value_to_type(value: Any, expected_type: str) -> Any:
+    """Coerce a value to match the expected type."""
+    if expected_type == "string":
+        return str(value) if value is not None else ""
+    elif expected_type in ("number", "integer"):
+        if isinstance(value, (int, float)):
+            return value
+        if isinstance(value, str):
+            try:
+                return int(value) if expected_type == "integer" else float(value)
+            except ValueError:
+                return value
+        return value
+    elif expected_type == "boolean":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            lower = value.lower()
+            if lower in ("true", "yes", "1", "on"):
+                return True
+            if lower in ("false", "no", "0", "off"):
+                return False
+        return bool(value)
+    elif expected_type == "array":
+        if isinstance(value, list):
+            return value
+        # Wrap single values in array
+        return [value] if value is not None else []
+    else:
+        return value
+
+
+def _build_schema_map(schema: list[Field] | None) -> dict[str, tuple[str, str]]:
+    """Build a mapping from all field variations to (canonical_name, type)."""
+    if not schema:
+        return {}
+
+    schema_map: dict[str, tuple[str, str]] = {}
+    for field in schema:
+        # Generate all variations of this field name
+        variations = _generated_aliases_for_field(field.name)
+        for variation in variations:
+            canonical_variation = canonicalize_field_name(variation)
+            # Map variation -> (canonical_name, type)
+            schema_map[canonical_variation] = (field.name, field.type)
+
+    return schema_map
+
+
+def normalize_context(
+    context: dict[str, Any],
+    schema: list[Field] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Normalize context using schema-first approach.
+
+    If schema is provided, ONLY fields defined in the schema will be included.
+    Field variations are automatically mapped to canonical names.
+    Values are coerced to match schema types.
+
+    If no schema is provided, falls back to built-in aliases.
+    """
     normalized: dict[str, Any] = {}
     warnings: list[str] = []
-    aliases = builtin_context_aliases()
+
+    # Build schema mapping if provided
+    schema_map = _build_schema_map(schema)
+
+    # Fall back to built-in aliases if no schema
+    if not schema_map:
+        aliases = builtin_context_aliases()
+    else:
+        aliases = {}
 
     def visit(value: Any, prefix: str = "") -> None:
         if isinstance(value, dict):
@@ -113,7 +221,30 @@ def normalize_context(context: dict[str, Any]) -> tuple[dict[str, Any], list[str
                 path = f"{prefix}.{key}" if prefix else key
                 visit(child, path)
             return
+
         normalized_prefix = _canonicalize_scalar_field(prefix)
+
+        # Try schema mapping first
+        if schema_map:
+            match = schema_map.get(normalized_prefix)
+            if match:
+                canonical_name, field_type = match
+                # Coerce value to expected type
+                coerced_value = _coerce_value_to_type(value, field_type)
+
+                if canonical_name in normalized and normalized[canonical_name] != coerced_value:
+                    warnings.append(f"Multiple values mapped to canonical field '{canonical_name}'.")
+                normalized[canonical_name] = coerced_value
+
+                if canonical_name != prefix:
+                    warnings.append(f"Normalized context field '{prefix}' to '{canonical_name}'.")
+                return
+            else:
+                # Field not in schema - warn and skip
+                warnings.append(f"Field '{prefix}' not found in schema. Skipping.")
+                return
+
+        # Fall back to built-in aliases
         field = aliases.get(normalized_prefix, normalized_prefix)
         if not field:
             return
@@ -157,16 +288,23 @@ class Signal:
         base_url: str = "http://localhost:8000",
         dev_mode: bool = False,
         auto_enrich: bool = True,
+        schema: list[Field] | None = None,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.headers = {"Authorization": f"Bearer {api_key}"}
         self.dev_mode = dev_mode
         self.auto_enrich = auto_enrich
+        self.schema = schema or []
 
         if dev_mode:
             logging.basicConfig(level=logging.DEBUG)
             logger.setLevel(logging.DEBUG)
+
+        if schema and dev_mode:
+            logger.debug(f"Initialized with schema containing {len(schema)} fields:")
+            for field in schema:
+                logger.debug(f"  - {field.name} ({field.type})")
 
     def _enrich_context(self, context: dict[str, Any]) -> dict[str, Any]:
         """Auto-enrich context with environment metadata."""
@@ -194,11 +332,17 @@ class Signal:
         if isinstance(context, dict):
             # Auto-enrich context
             enriched_context = self._enrich_context(context)
-            normalized_context, warnings = normalize_context(enriched_context)
+            normalized_context, warnings = normalize_context(enriched_context, schema=self.schema)
             outbound_context = json.dumps(normalized_context, sort_keys=True)
             outbound_metadata.setdefault("_signal_raw_context", context)
             if warnings:
                 outbound_metadata.setdefault("_signal_context_warnings", warnings)
+            # Send schema definition to sync on server-side
+            if self.schema:
+                outbound_metadata["_signal_schema"] = [
+                    {"name": field.name, "type": field.type, "description": field.description}
+                    for field in self.schema
+                ]
 
         deadline = time.monotonic() + timeout_seconds
         timeout = httpx.Timeout(30.0, read=None)
@@ -305,7 +449,14 @@ class Signal:
     ) -> CheckResult:
         # Auto-enrich context
         enriched_context = self._enrich_context(context)
-        normalized_context, local_warnings = normalize_context(enriched_context)
+        normalized_context, local_warnings = normalize_context(enriched_context, schema=self.schema)
+
+        # Send schema definition to sync on server-side
+        if self.schema:
+            normalized_context["_signal_schema"] = [
+                {"name": field.name, "type": field.type, "description": field.description}
+                for field in self.schema
+            ]
 
         async with httpx.AsyncClient(base_url=self.base_url, headers=self.headers, timeout=30.0) as client:
             if self.dev_mode:

@@ -1,11 +1,18 @@
 import EventSource from "eventsource";
 import fetch, { type HeadersInit, type Response as FetchResponse } from "node-fetch";
 
+export interface Field {
+  name: string;
+  type: "string" | "number" | "integer" | "boolean" | "array" | "object";
+  description?: string;
+}
+
 export interface SignalOptions {
   apiKey: string;
   baseUrl?: string;
   devMode?: boolean;
   autoEnrich?: boolean;
+  schema?: Field[];
 }
 
 export interface EscalateParams {
@@ -121,6 +128,8 @@ function generatedAliasesForField(canonicalName: string): Set<string> {
     canonicalName.replaceAll(".", "-"),
   ]);
   const parts = canonicalName.split(".");
+
+  // Add camelCase variation
   if (parts.length > 1) {
     const camelTail = parts
       .slice(1)
@@ -128,6 +137,24 @@ function generatedAliasesForField(canonicalName: string): Set<string> {
       .join("");
     aliases.add(`${parts[0]}${camelTail}`);
   }
+
+  // Add partial path variations (e.g., "cvss.score" from "vulnerability.cvss.score")
+  for (let i = 1; i < parts.length; i++) {
+    const partial = parts.slice(i).join(".");
+    aliases.add(partial);
+    aliases.add(partial.replaceAll(".", "_"));
+    aliases.add(partial.replaceAll(".", "-"));
+
+    const partialParts = parts.slice(i);
+    if (partialParts.length > 1) {
+      const partialCamel = partialParts
+        .slice(1)
+        .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
+        .join("");
+      aliases.add(`${partialParts[0]}${partialCamel}`);
+    }
+  }
+
   return aliases;
 }
 
@@ -146,13 +173,61 @@ export function builtinContextAliases(): Record<string, string> {
   return aliases;
 }
 
-export function normalizeContext(context: Record<string, unknown>): {
+function coerceValueToType(value: unknown, expectedType: string): unknown {
+  if (expectedType === "string") {
+    return value != null ? String(value) : "";
+  } else if (expectedType === "number" || expectedType === "integer") {
+    if (typeof value === "number") return value;
+    if (typeof value === "string") {
+      const parsed = expectedType === "integer" ? parseInt(value, 10) : parseFloat(value);
+      return isNaN(parsed) ? value : parsed;
+    }
+    return value;
+  } else if (expectedType === "boolean") {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      const lower = value.toLowerCase();
+      if (["true", "yes", "1", "on"].includes(lower)) return true;
+      if (["false", "no", "0", "off"].includes(lower)) return false;
+    }
+    return Boolean(value);
+  } else if (expectedType === "array") {
+    if (Array.isArray(value)) return value;
+    return value != null ? [value] : [];
+  }
+  return value;
+}
+
+function buildSchemaMap(schema?: Field[]): Map<string, { canonicalName: string; type: string }> {
+  const schemaMap = new Map<string, { canonicalName: string; type: string }>();
+  if (!schema) return schemaMap;
+
+  for (const field of schema) {
+    const canonicalName = canonicalizeFieldName(field.name);
+    const variations = generatedAliasesForField(canonicalName);
+    for (const variation of variations) {
+      const canonicalVariation = canonicalizeFieldName(variation);
+      schemaMap.set(canonicalVariation, { canonicalName, type: field.type });
+    }
+  }
+  return schemaMap;
+}
+
+export function normalizeContext(
+  context: Record<string, unknown>,
+  schema?: Field[]
+): {
   normalizedContext: Record<string, unknown>;
   warnings: string[];
 } {
   const normalizedContext: Record<string, unknown> = {};
   const warnings: string[] = [];
-  const aliases = builtinContextAliases();
+
+  // Build schema mapping if provided
+  const schemaMap = buildSchemaMap(schema);
+
+  // Fall back to built-in aliases if no schema
+  const aliases = schemaMap.size === 0 ? builtinContextAliases() : {};
 
   const visit = (value: unknown, prefix = ""): void => {
     if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -165,6 +240,32 @@ export function normalizeContext(context: Record<string, unknown>): {
     }
 
     const normalizedPrefix = canonicalizeScalarField(prefix);
+
+    // Try schema mapping first
+    if (schemaMap.size > 0) {
+      const match = schemaMap.get(normalizedPrefix);
+      if (match) {
+        const { canonicalName, type } = match;
+        const coercedValue = coerceValueToType(value, type);
+
+        if (Object.prototype.hasOwnProperty.call(normalizedContext, canonicalName) &&
+            normalizedContext[canonicalName] !== coercedValue) {
+          warnings.push(`Multiple values mapped to canonical field '${canonicalName}'.`);
+        }
+        normalizedContext[canonicalName] = coercedValue;
+
+        if (canonicalName !== prefix) {
+          warnings.push(`Normalized context field '${prefix}' to '${canonicalName}'.`);
+        }
+        return;
+      } else {
+        // Field not in schema - warn and skip
+        warnings.push(`Field '${prefix}' not found in schema. Skipping.`);
+        return;
+      }
+    }
+
+    // Fall back to built-in aliases
     const field = aliases[normalizedPrefix] ?? normalizedPrefix;
     if (!field) return;
     if (Object.prototype.hasOwnProperty.call(normalizedContext, field) && normalizedContext[field] !== value) {
@@ -185,12 +286,21 @@ export class Signal {
   private readonly baseUrl: string;
   private readonly devMode: boolean;
   private readonly autoEnrich: boolean;
+  private readonly schema?: Field[];
 
   constructor(options: SignalOptions) {
     this.apiKey = options.apiKey;
     this.baseUrl = (options.baseUrl ?? "http://localhost:8000").replace(/\/+$/, "");
     this.devMode = options.devMode ?? false;
     this.autoEnrich = options.autoEnrich ?? true;
+    this.schema = options.schema;
+
+    if (this.schema && this.devMode) {
+      console.log(`[Signal] Initialized with schema containing ${this.schema.length} fields:`);
+      for (const field of this.schema) {
+        console.log(`[Signal]   - ${field.name} (${field.type})`);
+      }
+    }
   }
 
   private enrichContext(context: Record<string, unknown>): Record<string, unknown> {
@@ -222,11 +332,19 @@ export class Signal {
     if (params.context && typeof params.context === "object") {
       // Auto-enrich context
       const enrichedContext = this.enrichContext(params.context);
-      const { normalizedContext, warnings } = normalizeContext(enrichedContext);
+      const { normalizedContext, warnings } = normalizeContext(enrichedContext, this.schema);
       outboundContext = JSON.stringify(normalizedContext);
       outboundMetadata._signal_raw_context ??= params.context;
       if (warnings.length > 0) {
         outboundMetadata._signal_context_warnings ??= warnings;
+      }
+      // Send schema definition to sync on server-side
+      if (this.schema) {
+        outboundMetadata._signal_schema = this.schema.map((field) => ({
+          name: field.name,
+          type: field.type,
+          description: field.description ?? "",
+        }));
       }
     }
 
@@ -266,7 +384,16 @@ export class Signal {
   async check(params: CheckParams): Promise<CheckResult> {
     // Auto-enrich context
     const enrichedContext = this.enrichContext(params.context);
-    const { normalizedContext, warnings } = normalizeContext(enrichedContext);
+    const { normalizedContext, warnings } = normalizeContext(enrichedContext, this.schema);
+
+    // Send schema definition to sync on server-side
+    if (this.schema) {
+      (normalizedContext as Record<string, unknown>)._signal_schema = this.schema.map((field) => ({
+        name: field.name,
+        type: field.type,
+        description: field.description ?? "",
+      }));
+    }
 
     this.log(`Checking policy: action=${params.action}, agentId=${params.agentId}`);
     this.log(`Normalized context: ${JSON.stringify(normalizedContext).substring(0, 200)}...`);

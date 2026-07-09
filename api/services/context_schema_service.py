@@ -420,6 +420,64 @@ def builtin_context_aliases() -> dict[str, str]:
 
 
 class ContextSchemaService:
+    async def sync_user_schema(
+        self,
+        session: AsyncSession,
+        org_id: UUID,
+        schema_fields: list[dict[str, Any]],
+    ) -> int:
+        """Sync user-defined schema fields from SDK.
+
+        Creates or updates fields marked as user_defined.
+        User-defined fields take precedence over learned fields.
+
+        Returns number of fields synced.
+        """
+        if not schema_fields:
+            return 0
+
+        existing_fields = (
+            await session.execute(select(ContextField).where(ContextField.org_id == org_id))
+        ).scalars().all()
+        fields_by_name = {field.canonical_name: field for field in existing_fields}
+
+        synced_count = 0
+        for field_def in schema_fields:
+            canonical_name = canonicalize_field_name(field_def.get("name", ""))
+            if not canonical_name:
+                continue
+
+            field_type = field_def.get("type", "string")
+            description = field_def.get("description", f"User-defined field: {canonical_name}")
+
+            existing = fields_by_name.get(canonical_name)
+            if existing:
+                # Update existing field to user-defined
+                if existing.description.startswith("Observed context field"):
+                    existing.description = description
+                existing.field_type = field_type
+            else:
+                # Create new user-defined field
+                field = ContextField(
+                    org_id=org_id,
+                    canonical_name=canonical_name,
+                    field_type=field_type,
+                    description=description,
+                    sample_values=[],
+                    occurrence_count=0,
+                )
+                session.add(field)
+                await session.flush()
+                fields_by_name[canonical_name] = field
+
+            # Ensure all generated aliases exist
+            aliases_to_add = generated_aliases_for_field(canonical_name)
+            await self._ensure_aliases(session, org_id, fields_by_name[canonical_name], aliases_to_add, "user_defined")
+            synced_count += 1
+
+        logger.info(f"[SYNC_SCHEMA] Synced {synced_count} user-defined fields for org {org_id}")
+        return synced_count
+
     async def alias_map(self, session: AsyncSession, org_id: UUID) -> dict[str, str]:
         fields = (
             await session.execute(select(ContextField).where(ContextField.org_id == org_id))

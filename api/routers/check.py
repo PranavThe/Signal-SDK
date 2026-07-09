@@ -33,10 +33,18 @@ async def check_policy(
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_key),
 ) -> CheckResponse:
-    context_result = await ContextSchemaService().normalize(
+    # Sync user-defined schema if provided in context
+    schema_service = ContextSchemaService()
+    context_dict = dict(payload.context)
+    user_schema = context_dict.pop("_signal_schema", None)
+    if user_schema and isinstance(user_schema, list):
+        await schema_service.sync_user_schema(session, auth.org_id, user_schema)
+        await session.flush()
+
+    context_result = await schema_service.normalize(
         session,
         auth.org_id,
-        payload.context,
+        context_dict,
         learn=True,
         source="check",
     )

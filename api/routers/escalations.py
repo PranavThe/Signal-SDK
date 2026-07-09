@@ -87,8 +87,15 @@ async def create_escalation(
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_key),
 ) -> EscalationCreateResponse:
+    # Sync user-defined schema if provided in metadata
+    schema_service = ContextSchemaService()
+    user_schema = payload.metadata.get("_signal_schema") if payload.metadata else None
+    if user_schema and isinstance(user_schema, list):
+        await schema_service.sync_user_schema(session, auth.org_id, user_schema)
+        await session.flush()
+
     # Normalize context using ContextSchemaService
-    context_result = await ContextSchemaService().normalize(
+    context_result = await schema_service.normalize(
         session,
         auth.org_id,
         context_from_escalation_text(payload.context, payload.metadata),

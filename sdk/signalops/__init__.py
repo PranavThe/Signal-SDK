@@ -6,6 +6,7 @@ from typing import Any
 from signal_sdk.client import (
     CheckResult,
     EscalationResult,
+    Field,
     Signal,
     builtin_context_aliases,
     canonicalize_field_name,
@@ -105,6 +106,7 @@ from signalops.exceptions import (  # noqa: E402
 __all__ = [
     "CheckResult",
     "EscalationResult",
+    "Field",
     "Signal",
     "SignalAuthError",
     "SignalError",
