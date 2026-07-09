@@ -78,6 +78,7 @@ async def find_similar_escalations(
                 """
                 SELECT
                     e.context,
+                    e.normalized_context,
                     e.human_decision,
                     e.responded_at,
                     1 - (e.context_embedding <=> CAST(:embedding AS vector)) AS similarity
@@ -103,6 +104,7 @@ async def find_similar_escalations(
     return [
         {
             "context": row["context"],
+            "normalized_context": row["normalized_context"],
             "human_decision": row["human_decision"],
             "responded_at": row["responded_at"],
             "similarity": float(row["similarity"]),
