@@ -452,6 +452,7 @@ Escalate a decision to Signal. **Automatically checks existing rules first** - i
 - \`decision\` (str): The decision made (e.g., "approve", "reject", "yes", "no")
 - \`rule_id\` (str | None): ID of the rule that made this decision (if auto-resolved)
 - \`auto_resolved\` (bool): Whether this was resolved by a rule (True) or human (False)
+- \`action\` (str | None): The specific action prescribed by Signal (see Action Prescription below)
 
 **Example:**
 \`\`\`python
@@ -623,6 +624,58 @@ account_result = await signalops.escalate(
     context="..."
 )
 \`\`\`
+
+### Pattern 5: Action Prescription
+
+Signal doesn't just tell you "yes" or "no" - it tells you **what to do**. This is how Signal turns human judgment into operational intelligence.
+
+\`\`\`python
+# Define your agent's capabilities - only these actions can be executed
+ALLOWED_ACTIONS = {
+    "check_account_for_fraud": check_account_for_fraud,
+    "escalate_to_fraud_team": escalate_to_fraud_team,
+    "refund_immediately": refund_immediately,
+    "send_verification_email": send_verification_email,
+}
+
+# Ask Signal what action to take
+result = await signalops.escalate(
+    agent_id="customer-service",
+    question="How should I handle this fraud report?",
+    action="check_account_for_fraud",  # Your default/proposed action
+    context={
+        "customer_id": "cust_12345",
+        "transaction_amount": 99.99,
+        "customer_tier": "premium"
+    }
+)
+
+# Signal prescribes a specific action based on learned patterns
+prescribed_action = result.action  # e.g., "escalate_to_fraud_team"
+
+# Safely validate and execute the prescribed action
+if prescribed_action and prescribed_action in ALLOWED_ACTIONS:
+    action_fn = ALLOWED_ACTIONS[prescribed_action]
+    action_fn(customer_id, transaction_id)
+elif prescribed_action:
+    # Unknown action - re-escalate for guidance
+    await signalops.escalate(
+        agent_id="customer-service",
+        question=f"I don't know how to '{prescribed_action}'. What should I do instead?",
+        context={...}
+    )
+else:
+    # No action prescribed - use your default
+    check_account_for_fraud(customer_id, transaction_id)
+\`\`\`
+
+**Key Benefits:**
+- **Captures institutional knowledge**: Not just "yes/no" but specific actions to take
+- **Safe by design**: Agents maintain whitelists and validate before executing
+- **Self-improving**: When Signal learns new rules, it prescribes better actions
+- **Graceful degradation**: Unknown actions trigger re-escalation instead of crashes
+
+**The Moat:** Every decision adds to your organization's accumulated knowledge of which actions work in which situations. This compounds over time into a competitive advantage that competitors can't replicate.
 
 ---
 
