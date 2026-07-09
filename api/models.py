@@ -238,6 +238,7 @@ class Escalation(Base):
     human_reasoning: Mapped[str | None] = mapped_column(Text)
     apply_broadly: Mapped[bool | None]
     auto_resolved: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
+    prescribed_action: Mapped[str | None] = mapped_column(Text)  # Action prescribed by matched rule
     responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finalization_reason: Mapped[str | None] = mapped_column(Text)

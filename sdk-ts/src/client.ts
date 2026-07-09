@@ -29,6 +29,7 @@ export interface EscalationResult {
   decision: string | null;
   ruleId: string | null;
   autoResolved: boolean;
+  action: string | null;
 }
 
 export interface CheckParams {
@@ -54,6 +55,7 @@ type EscalationState = {
   auto_resolved?: boolean;
   finalized?: boolean;
   finalization_reason?: string | null;
+  action?: string | null;
 };
 
 const personScalarFields = new Set([
@@ -462,6 +464,7 @@ export class Signal {
             decision: state.human_decision ?? null,
             ruleId: state.rule_id ?? null,
             autoResolved: Boolean(state.auto_resolved),
+            action: state.action ?? null,
           });
         }
         if (state.status === "timed_out") {
@@ -497,6 +500,7 @@ export class Signal {
           decision: state.human_decision ?? null,
           ruleId: state.rule_id ?? null,
           autoResolved: Boolean(state.auto_resolved),
+          action: state.action ?? null,
         };
       }
       if (state.status === "timed_out") {

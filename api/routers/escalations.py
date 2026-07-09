@@ -175,8 +175,11 @@ async def create_escalation(
     # If a rule matches, auto-resolve immediately
     if matched_rule is not None:
         action = matched_rule.structured_action or {}
+        prescribed_action_value = str(action.get("action", "proceed"))
+
         escalation.status = "responded"
-        escalation.human_decision = _action_to_human_decision(str(action.get("action", "proceed")))
+        escalation.human_decision = _action_to_human_decision(prescribed_action_value)
+        escalation.prescribed_action = prescribed_action_value
         escalation.rule_id = matched_rule.id
         escalation.auto_resolved = True
 
@@ -298,6 +301,7 @@ async def get_escalation(
         auto_resolved=escalation.auto_resolved,
         finalized=escalation.finalized_at is not None,
         finalization_reason=escalation.finalization_reason,
+        action=escalation.prescribed_action,
     )
 
 

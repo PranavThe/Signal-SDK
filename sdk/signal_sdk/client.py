@@ -259,10 +259,11 @@ def normalize_context(
 
 
 class EscalationResult:
-    def __init__(self, decision: str, rule_id: str | None, auto_resolved: bool = False):
+    def __init__(self, decision: str, rule_id: str | None, auto_resolved: bool = False, action: str | None = None):
         self.decision = decision
         self.rule_id = rule_id
         self.auto_resolved = auto_resolved
+        self.action = action
 
 
 class CheckResult:
@@ -409,6 +410,7 @@ class Signal:
                             decision=state.get("human_decision"),
                             rule_id=state.get("rule_id"),
                             auto_resolved=bool(state.get("auto_resolved")),
+                            action=state.get("action"),
                         )
                     if state.get("status") == "timed_out":
                         raise TimeoutError(f"Escalation {escalation_id} timed out")
@@ -433,6 +435,7 @@ class Signal:
                     decision=state["human_decision"],
                     rule_id=state["rule_id"],
                     auto_resolved=bool(state.get("auto_resolved")),
+                    action=state.get("action"),
                 )
             if state["status"] == "timed_out":
                 raise TimeoutError(f"Escalation {escalation_id} timed out")

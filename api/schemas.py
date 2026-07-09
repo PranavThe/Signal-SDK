@@ -71,6 +71,7 @@ class EscalationStateResponse(BaseModel):
     auto_resolved: bool = False
     finalized: bool = False
     finalization_reason: str | None = None
+    action: str | None = Field(None, description="The action prescribed by the matched rule or approved by human")
 
 
 class CheckRequest(BaseModel):

@@ -438,6 +438,7 @@ An `EscalationResult` object with:
 - `auto_resolved` (bool): Whether this was resolved by a rule without human review
   - `True`: A matching rule was found and applied immediately (no waiting)
   - `False`: Required human review and decision
+- `action` (str|None): The action prescribed by Signal (see Action Prescription below)
 
 **Auto-Resolution:**
 
@@ -465,6 +466,100 @@ Example warning:
 ```
 WARNING: Context validation: Missing field 'customer_tier' - this field appears in 80%+ of similar escalations (example: premium)
 ```
+
+**Action Prescription:**
+
+Signal doesn't just tell you "yes" or "no" - it tells you **what to do**. This is the core of how Signal turns human judgment into operational intelligence.
+
+```python
+# Agent asks what to do when it doesn't know
+result = await signalops.escalate(
+    agent_id="customer-service",
+    question="What should I do about this fraud report?",
+    action="check_account_for_fraud",  # What the agent thinks it should do
+    context={
+        "amount": 842,
+        "transaction_type": "card_charge",
+        "customer_reported": "unauthorized"
+    }
+)
+
+# Signal prescribes the action to take
+if result.action == "check_account_for_fraud":
+    check_account_for_fraud()
+elif result.action == "escalate_to_fraud_team":
+    escalate_to_fraud_team()
+elif result.action == "refund_immediately":
+    refund_immediately()
+else:
+    # Unknown action - escalate back to Signal
+    await signalops.escalate(
+        agent_id="customer-service",
+        question=f"I don't know how to {result.action}, what should I do?",
+        context=context
+    )
+```
+
+**How It Works:**
+
+1. **Agent proposes an action**: Include `action="action_name"` in your escalate() call
+2. **Signal responds with an action**: `result.action` contains the action to take
+   - If a rule matches: Returns the action from the rule
+   - If human decides: Returns the action they approve or prescribe
+3. **Agent validates and executes**: Agent checks if it can handle the action, then executes it
+
+**Creating Rules That Prescribe Actions:**
+
+When a human reviews an escalation:
+1. They can **approve** the proposed action (Signal returns original action)
+2. They can **reject and prescribe a different action** (Signal returns alternative action)
+3. When creating a rule, the action is captured and reused
+
+**Safe Action Handling Pattern:**
+
+```python
+# Define allowed actions upfront
+ALLOWED_ACTIONS = {
+    "check_account_for_fraud": check_account_for_fraud,
+    "escalate_to_fraud_team": escalate_to_fraud_team,
+    "refund_immediately": refund_immediately,
+    "send_verification_email": send_verification_email,
+}
+
+async def handle_fraud_report(transaction):
+    result = await signalops.escalate(
+        agent_id="fraud-detector",
+        question="How should I handle this potential fraud?",
+        action="check_account_for_fraud",  # Default action
+        context=transaction
+    )
+
+    # Validate action before executing
+    action_fn = ALLOWED_ACTIONS.get(result.action)
+    if action_fn:
+        action_fn(transaction)
+    else:
+        # Unknown action - log error and escalate
+        logger.error(f"Unknown action prescribed: {result.action}")
+        await signalops.escalate(
+            agent_id="fraud-detector",
+            question=f"Cannot execute {result.action} - need guidance",
+            context=transaction
+        )
+```
+
+**Benefits:**
+
+- **Institutional Knowledge**: Rules capture not just "approve/reject" but "do THIS specific thing"
+- **Flexibility**: Humans can prescribe alternative actions when the agent's proposal isn't right
+- **Safety**: Agents validate actions before executing (whitelist pattern)
+- **Evolution**: As rules accumulate, agents learn the right action for each situation
+
+**The Moat:**
+
+> "The company that has been running us for a year has operational intelligence that cannot be replicated by a competitor who starts today. Not because the software is hard to copy. Because the accumulated judgment of twelve months of real human decisions cannot be copied at all."
+
+Action prescription turns every human decision into permanent operational intelligence about what your company does in each situation.
 
 ### check()
 

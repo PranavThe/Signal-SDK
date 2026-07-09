@@ -243,6 +243,9 @@ async def approve_rule(
     rule.updated_at = datetime.now(UTC)
     if escalation is not None:
         escalation.rule_id = rule.id
+        # Set the prescribed action from the rule
+        action = rule.structured_action or {}
+        escalation.prescribed_action = str(action.get("action", "proceed"))
         mark_escalation_finalized(escalation, "rule_approved")
         if await _slack_sync_enabled(session, escalation):
             await _try_slack(SlackService().update_rule_proposal(escalation, rule, "approved"), "approve rule proposal")
