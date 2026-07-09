@@ -308,6 +308,7 @@ Configure Signal globally (optional - you can also set `SIGNALOPS_API_KEY` envir
 
 ```python
 import signalops
+from signalops import Field
 
 signalops.configure(
     api_key="sk_live_your_api_key_here",
@@ -315,6 +316,22 @@ signalops.configure(
     dev_mode=False,  # Optional: Enable debug logging
     auto_enrich=True  # Optional: Auto-add environment metadata (default: True)
 )
+
+# Or use Signal class directly with schema
+from signalops import Signal
+
+signal = Signal(
+    api_key="sk_live_...",
+    schema=[
+        Field("vulnerability.cvss.score", type="number"),
+        Field("dependency.direct", type="boolean"),
+    ],
+    dev_mode=True,
+    auto_enrich=True
+)
+
+# Then use signal.escalate() instead of signalops.escalate()
+result = await signal.escalate(...)
 ```
 
 **Parameters:**
@@ -323,6 +340,63 @@ signalops.configure(
 - `base_url` (str, optional): Custom deployment URL
 - `dev_mode` (bool, optional): Enable debug logging for development (default: False)
 - `auto_enrich` (bool, optional): Automatically add timestamp and environment to context (default: True)
+- `schema` (list[Field], optional): Define your context schema for consistent normalization (v0.2.2+)
+
+### Schema Definition (New in v0.2.2)
+
+**Define your context schema upfront to ensure consistent field naming and types:**
+
+```python
+from signalops import Signal, Field
+
+signal = Signal(
+    api_key="sk_live_...",
+    schema=[
+        Field("vulnerability.cvss.score", type="number"),
+        Field("vulnerability.severity", type="string"),
+        Field("dependency.direct", type="boolean"),
+        Field("dependency.ecosystem", type="string"),
+        Field("cisa.kev.known.ransomware.campaign.use", type="boolean"),
+    ]
+)
+
+# All field variations automatically map to canonical names:
+result = await signal.escalate(
+    agent_id="security-scanner",
+    question="Should this vulnerability be escalated?",
+    context={
+        "cvss.score": 10,           # → vulnerability.cvss.score
+        "cvssScore": 10,            # → vulnerability.cvss.score
+        "CVSS Score": 10,           # → vulnerability.cvss.score
+        "direct.dependency": "yes", # → dependency.direct (coerced to True)
+    }
+)
+```
+
+**Field Types:**
+- `"string"` - Text values
+- `"number"` - Floating point numbers
+- `"integer"` - Whole numbers
+- `"boolean"` - True/False values
+- `"array"` - Lists of values
+- `"object"` - Nested dictionaries
+
+**Benefits:**
+- ✅ No duplicate fields from naming variations
+- ✅ Consistent types across all contexts
+- ✅ Reliable rule matching
+- ✅ Automatic type coercion (e.g., "yes" → True, single value → [array])
+
+**Field Variation Mapping:**
+
+Signal automatically generates and recognizes these variations for `"vulnerability.cvss.score"`:
+- `vulnerability.cvss.score` (exact)
+- `vulnerability_cvss_score` (underscore)
+- `vulnerabilityCvssScore` (camelCase)
+- `cvss.score` (partial path)
+- `cvss_score` (partial underscore)
+- `cvssScore` (partial camelCase)
+- `score` (last part only)
 
 ### escalate()
 
@@ -332,7 +406,7 @@ Escalate a decision to Signal. **Automatically checks existing rules first** - i
 result = await signalops.escalate(
     agent_id="your-agent-identifier",
     question="Should I perform this action?",
-    context="Description of the situation with relevant details",
+    context={"key": "value"},  # Prefer dict for schema normalization
     metadata={"key": "value"},  # Optional structured data
     action="action_name",  # Optional action identifier
     timeout_seconds=3600,  # Optional, default 3600
@@ -345,8 +419,9 @@ result = await signalops.escalate(
 - `agent_id` (str): Unique identifier for your agent
 - `question` (str): Clear description of what decision is needed
 - `context` (dict or str): Context for the situation
-  - Prefer a dictionary so Signal can normalize fields before matching rules
+  - **Prefer a dictionary** so Signal can normalize fields using your schema
   - Example: `{"amount": 150, "customer_tier": "premium"}`
+  - If no schema defined, uses built-in field aliases
 - `metadata` (dict, optional): Additional structured data (stored but not displayed prominently)
 - `action` (str, optional): Action identifier for this decision type
 - `timeout_seconds` (int, optional): How long to wait for a decision (default: 3600)
@@ -552,27 +627,76 @@ signalops.configure(
 )
 ```
 
+### Schema-First Normalization (v0.2.2)
+
+**The Problem:**
+Without a schema, sloppy field names create duplicate fields in your database:
+- Agent 1 sends `{"cvss.score": 10}` → creates "cvss.score" field
+- Agent 2 sends `{"vulnerability.cvss.score": 10}` → creates DIFFERENT "vulnerability.cvss.score" field
+- Rules don't match across agents!
+
+**The Solution:**
+Define your schema once, and Signal normalizes ALL variations to canonical names:
+
+```python
+from signalops import Signal, Field
+
+# Define schema once
+signal = Signal(
+    api_key="sk_live_...",
+    schema=[
+        Field("vulnerability.cvss.score", type="number"),
+        Field("vulnerability.cves", type="array"),
+        Field("dependency.direct", type="boolean"),
+    ]
+)
+
+# ALL these map to vulnerability.cvss.score:
+await signal.escalate(
+    context={
+        "cvss.score": 10,      # ✓ Normalized
+        "cvssScore": 10,       # ✓ Normalized
+        "CVSS Score": 10,      # ✓ Normalized
+    }
+)
+```
+
+**Automatic Type Coercion:**
+
+| Input | Expected Type | Output |
+|-------|--------------|--------|
+| `"yes"` | `boolean` | `True` |
+| `"Known"` | `boolean` | `True` |
+| `10` | `array` | `[10]` |
+| `"CWE-20"` | `array` | `["CWE-20"]` |
+| `10` | `string` | `"10"` |
+
+**Schema Syncing:**
+- Schema automatically synced to server on first escalate()/check() call
+- Server stores canonical fields and generates all aliases
+- User-defined fields override learned fields
+
 ### Context Validation
 
-Signal learns from your historical escalations to provide intelligent validation warnings:
+Signal validates your context and provides warnings:
 
 **Field Normalization:**
 ```python
-# You send: {"user_email": "alice@company.com"}
-# Signal normalizes to: {"email": "alice@company.com"}
-# Warning: "Field 'user_email' was normalized to 'email'"
+# With schema: Field variations normalized to canonical names
+# Without schema: Uses built-in aliases (e.g., user_email → email)
+# Warning: "Normalized context field 'cvss.score' to 'vulnerability.cvss.score'"
 ```
 
-**Missing Important Fields:**
+**Missing Schema Fields:**
 ```python
-# Signal notices 'customer_tier' appears in 90% of your escalations
-# Warning: "Missing field 'customer_tier' - appears in 80%+ of escalations (example: premium)"
+# With schema: Warns if field not in schema
+# Warning: "Field 'unknown_field' not found in schema. Skipping."
 ```
 
 **Type Mismatches:**
 ```python
-# Field 'amount' is usually a number, but you sent a string
-# Warning: "Field 'amount' expected type 'integer' but got 'string'. Value: '150'"
+# Automatic coercion happens, but warns if types don't match
+# Warning: "Field 'direct.dependency' expected type 'boolean', got 'string', coerced to True"
 ```
 
 These warnings help you maintain consistent context across your agents and improve rule matching.

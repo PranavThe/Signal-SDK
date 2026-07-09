@@ -19,7 +19,7 @@ function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
 }
 
 const DASHBOARD_URL = "https://signal-omega-tan.vercel.app/dashboard";
-const SIGNALOPS_VERSION = "0.2.1";
+const SIGNALOPS_VERSION = "0.2.2";
 
 function useIsNarrow(breakpoint: number) {
   const [isNarrow, setIsNarrow] = useState(false);
@@ -372,6 +372,7 @@ Configure Signal globally. Call this once at the start of your application.
 - \`base_url\` (str, optional): Signal API URL. Default: \`https://signal-omega-tan.vercel.app\`
 - \`dev_mode\` (bool, optional): Enable debug logging for development (default: False)
 - \`auto_enrich\` (bool, optional): Automatically add timestamp and environment to context (default: True)
+- \`schema\` (list[Field], optional): Define context schema for consistent field normalization (v0.2.2+)
 
 **Example:**
 \`\`\`python
@@ -384,6 +385,51 @@ signalops.configure(
     auto_enrich=True  # Optional: Auto-add environment metadata (default: True)
 )
 \`\`\`
+
+---
+
+### Schema Definition (New in v0.2.2)
+
+Define your context schema upfront to ensure consistent field naming and types across all contexts. This eliminates duplicate fields caused by naming variations.
+
+**Example:**
+\`\`\`python
+from signalops import Signal, Field
+
+signal = Signal(
+    api_key="sk_live_...",
+    schema=[
+        Field("vulnerability.cvss.score", type="number"),
+        Field("vulnerability.severity", type="string"),
+        Field("dependency.direct", type="boolean"),
+    ]
+)
+
+# All variations automatically map to canonical names:
+result = await signal.escalate(
+    agent_id="security-scanner",
+    question="Should this vulnerability be escalated?",
+    context={
+        "cvss.score": 10,           # → vulnerability.cvss.score
+        "cvssScore": 10,            # → vulnerability.cvss.score
+        "direct.dependency": "yes", # → dependency.direct (coerced to True)
+    }
+)
+\`\`\`
+
+**Benefits:**
+- No duplicate fields from naming variations
+- Consistent types across all contexts
+- Reliable rule matching across agents
+- Automatic type coercion (e.g., "yes" → True, single value → [array])
+
+**Field Types:**
+- \`string\` - Text values
+- \`number\` - Floating point numbers
+- \`integer\` - Whole numbers
+- \`boolean\` - True/False values
+- \`array\` - Lists of values
+- \`object\` - Nested dictionaries
 
 ---
 
@@ -1945,6 +1991,35 @@ Visit ${DASHBOARD_URL} for more information.
                       <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>base_url</code> (str, optional): Custom API endpoint URL</li>
                       <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>dev_mode</code> (bool, optional): Enable debug logging for development (default: False)</li>
                       <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>auto_enrich</code> (bool, optional): Automatically add timestamp and environment to context (default: True)</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>schema</code> (list[Field], optional): Define context schema for consistent field normalization (v0.2.2+)</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: "3rem" }}>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>Schema Definition (New in v0.2.2)</h3>
+                  <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>
+                    Define your context schema upfront to ensure consistent field naming and types across all contexts. This eliminates duplicate fields caused by naming variations.
+                  </p>
+                  <CodeBlock language="python" code={'from signalops import Signal, Field\n\nsignal = Signal(\n    api_key="sk_live_...",\n    schema=[\n        Field("vulnerability.cvss.score", type="number"),\n        Field("vulnerability.severity", type="string"),\n        Field("dependency.direct", type="boolean"),\n    ]\n)\n\n# All variations automatically map to canonical names:\nresult = await signal.escalate(\n    agent_id="security-scanner",\n    question="Should this vulnerability be escalated?",\n    context={\n        "cvss.score": 10,           # → vulnerability.cvss.score\n        "cvssScore": 10,            # → vulnerability.cvss.score\n        "direct.dependency": "yes", # → dependency.direct (True)\n    }\n)'} />
+                  <div style={{ marginTop: "1.5rem" }}>
+                    <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem", color: "#0d0d0b" }}>Benefits:</h4>
+                    <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                      <li>No duplicate fields from naming variations (e.g., "cvss.score" and "vulnerability.cvss.score" become one field)</li>
+                      <li>Consistent types across all contexts (e.g., "yes" → True, "10" → [10] for arrays)</li>
+                      <li>Reliable rule matching across agents</li>
+                      <li>Automatic type coercion</li>
+                    </ul>
+                  </div>
+                  <div style={{ marginTop: "1.5rem" }}>
+                    <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem", color: "#0d0d0b" }}>Field Types:</h4>
+                    <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>string</code> - Text values</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>number</code> - Floating point numbers</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>integer</code> - Whole numbers</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>boolean</code> - True/False values</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>array</code> - Lists of values</li>
+                      <li><code style={{ background: "#f7f7f5", padding: "0.125rem 0.375rem", borderRadius: "0.25rem", fontFamily: "'Geist Mono', monospace", fontSize: "0.875rem" }}>object</code> - Nested dictionaries</li>
                     </ul>
                   </div>
                 </div>
