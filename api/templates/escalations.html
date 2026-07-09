@@ -70,7 +70,7 @@
           </td>
           <td class="px-4 py-4 text-stone-600" x-text="item.agent_id"></td>
           <td class="max-w-xl px-4 py-4">
-            <p class="font-medium text-stone-950 cursor-pointer" x-text="item.context_short" @click="open = !open"></p>
+            <p class="font-medium text-stone-950 cursor-pointer" x-text="item.question || 'View context'" @click="open = !open"></p>
             <div class="mt-2 flex flex-wrap gap-1" x-show="contextChips(item).length > 0">
               <template x-for="chip in contextChips(item)" :key="chip.label">
                 <span class="border border-stone-200 px-2 py-0.5 text-xs text-stone-600" :title="chip.value" x-text="chip.label + ': ' + chip.value"></span>
@@ -79,8 +79,15 @@
             <div x-show="open" x-cloak class="mt-4 border-l-2 border-stone-200 pl-4">
               <div class="space-y-4 text-stone-700">
                 <div>
-                  <p class="mb-1 text-xs font-semibold uppercase text-stone-500">Full context</p>
-                  <p x-text="item.context"></p>
+                  <p class="mb-1 text-xs font-semibold uppercase text-stone-500">Normalized context</p>
+                  <div class="mt-2 space-y-1">
+                    <template x-for="field in parseNormalizedContext(item.normalized_context)" :key="field.key">
+                      <div class="grid grid-cols-[auto_1fr] gap-3">
+                        <span class="text-xs font-semibold text-stone-950" x-text="field.key"></span>
+                        <span class="text-sm text-stone-700" x-text="field.value"></span>
+                      </div>
+                    </template>
+                  </div>
                 </div>
                 <div>
                   <p class="mb-1 text-xs font-semibold uppercase text-stone-500">Question</p>
@@ -306,21 +313,48 @@
         };
       },
       contextChips(item) {
-        const text = String(item.context || "");
+        const normalized = item.normalized_context || {};
         const chips = [];
-        for (const line of text.split(/\n/)) {
-          const match = line.trim().match(/^([^:=]{2,32})[:=]\s*(.+)$/);
-          if (!match) continue;
-          const label = match[1].trim();
-          const value = match[2].trim();
-          if (!label || !value) continue;
-          chips.push({
-            label,
-            value: value.length > 30 ? value.slice(0, 29).trimEnd() + "..." : value,
-          });
+        for (const [key, value] of Object.entries(normalized)) {
+          let displayValue;
+          if (value === null || value === undefined) {
+            displayValue = '-';
+          } else if (typeof value === 'boolean') {
+            displayValue = value ? 'true' : 'false';
+          } else if (Array.isArray(value)) {
+            displayValue = value.length > 0 ? value.join(', ') : '[]';
+          } else if (typeof value === 'object') {
+            displayValue = JSON.stringify(value);
+          } else {
+            displayValue = String(value);
+          }
+          const truncatedValue = displayValue.length > 30 ? displayValue.slice(0, 29).trimEnd() + "..." : displayValue;
+          chips.push({ label: key, value: truncatedValue });
           if (chips.length >= 3) break;
         }
         return chips;
+      },
+      parseNormalizedContext(normalized_context) {
+        if (!normalized_context || typeof normalized_context !== 'object') return [];
+
+        const fields = [];
+        for (const [key, value] of Object.entries(normalized_context)) {
+          let displayValue;
+          if (value === null || value === undefined) {
+            displayValue = '-';
+          } else if (typeof value === 'boolean') {
+            displayValue = value ? 'true' : 'false';
+          } else if (Array.isArray(value)) {
+            displayValue = value.length > 0 ? value.join(', ') : '[]';
+          } else if (typeof value === 'object') {
+            displayValue = JSON.stringify(value);
+          } else {
+            displayValue = String(value);
+          }
+          fields.push({ key, value: displayValue });
+        }
+
+        return fields;
       },
       async load(showErrors = true) {
         if (!this.hasOrg) return;

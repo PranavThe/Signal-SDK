@@ -237,10 +237,9 @@ def _escalation_payload(escalation: Escalation) -> dict[str, Any]:
     return {
         "id": str(escalation.id),
         "context": escalation.context,
-        "normalized_context": escalation.normalized_context,
+        "normalized_context": escalation.normalized_context or {},
         "question": escalation.question,
         "metadata": escalation.metadata_,
-        "normalized_context": escalation.normalized_context,
         "agent_id": escalation.agent_id,
         "status": escalation.status,
         "human_decision": escalation.human_decision,
@@ -311,7 +310,7 @@ def _activity_item_payload(kind: str, item: Any, rule: Rule | None = None) -> di
             "human_decision": item.human_decision,
             "rule_id": _serialize(item.rule_id),
             "auto_resolved": item.auto_resolved,
-            "context": item.metadata_,
+            "context": item.normalized_context or {},
         }
     return {
         "id": str(item.id),
