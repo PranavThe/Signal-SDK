@@ -436,6 +436,7 @@ def _source_escalation_payload(escalation: Escalation | None) -> dict[str, Any] 
     return {
         "id": str(escalation.id),
         "context": escalation.context,
+        "normalized_context": escalation.normalized_context or {},
         "question": escalation.question,
         "metadata": escalation.metadata_,
         "agent_id": escalation.agent_id,
@@ -604,6 +605,7 @@ async def _similar_decision_payload(session: AsyncSession, escalation: Escalatio
     return [
         {
             "context": _truncate(str(decision.get("context") or ""), 120),
+            "normalized_context": decision.get("normalized_context") or {},
             "human_decision": decision.get("human_decision") or "responded",
             "time_ago": _time_ago(decision.get("responded_at")),
             "similarity": f"{float(decision.get('similarity') or 0) * 100:.0f}%",
@@ -646,6 +648,7 @@ async def _review_escalation_payload(session: AsyncSession, escalation: Escalati
         "id": str(escalation.id),
         "stage": stage,
         "context": escalation.context,
+        "normalized_context": escalation.normalized_context or {},
         "question": escalation.question,
         "metadata": escalation.metadata_,
         "agent_id": escalation.agent_id,
