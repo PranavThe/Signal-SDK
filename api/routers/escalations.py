@@ -155,7 +155,23 @@ async def create_escalation(
                     query_text=semantic_text,
                 )
                 if semantic_match is not None:
-                    matched_rule, semantic_similarity = semantic_match
+                    candidate_rule, semantic_similarity = semantic_match
+                    # CRITICAL: Validate that the semantically matched rule's structured conditions
+                    # actually match the context. Semantic matching finds similar *situations*,
+                    # but we must verify the exact field conditions (especially action fields).
+                    from api.rule_engine import rule_matches
+                    if rule_matches(candidate_rule, context_result.normalized):
+                        matched_rule = candidate_rule
+                    else:
+                        # Log that semantic match was rejected due to condition mismatch
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.info(
+                            f"Semantic match rejected: Rule {candidate_rule.id} matched semantically "
+                            f"({semantic_similarity * 100:.0f}%) but structured conditions don't match. "
+                            f"Rule conditions: {candidate_rule.structured_conditions}"
+                        )
+                        semantic_similarity = None  # Clear semantic similarity since we rejected it
             except Exception as e:
                 # Don't fail escalation creation if semantic matching fails
                 import logging
