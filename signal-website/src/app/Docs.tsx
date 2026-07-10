@@ -18,7 +18,9 @@ function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
   );
 }
 
-const DASHBOARD_URL = "https://signal-omega-tan.vercel.app/dashboard";
+const SIGNAL_BASE_URL =
+  typeof window !== "undefined" ? window.location.origin : "https://your-signal-deployment.vercel.app";
+const DASHBOARD_URL = `${SIGNAL_BASE_URL}/dashboard`;
 const SIGNALOPS_VERSION = "0.2.2";
 
 function useIsNarrow(breakpoint: number) {
@@ -79,7 +81,7 @@ import signalops
 # Configure Signal with your API key
 signalops.configure(
     api_key="sk_live_your_api_key_here",
-    # base_url is optional - defaults to https://signal-omega-tan.vercel.app
+    # base_url is optional - defaults to ${SIGNAL_BASE_URL}
 )
 
 async def handle_refund_request(customer_id: str, order_amount: float, reason: str, days_since_purchase: int):
@@ -369,7 +371,7 @@ Configure Signal globally. Call this once at the start of your application.
 
 **Parameters:**
 - \`api_key\` (str, required): Your Signal API key starting with \`sk_live_\`
-- \`base_url\` (str, optional): Signal API URL. Default: \`https://signal-omega-tan.vercel.app\`
+- \`base_url\` (str, optional): Signal API URL. Default: \`${SIGNAL_BASE_URL}\`
 - \`dev_mode\` (bool, optional): Enable debug logging for development (default: False)
 - \`auto_enrich\` (bool, optional): Automatically add timestamp and environment to context (default: True)
 - \`schema\` (list[Field], optional): Define context schema for consistent field normalization (v0.2.2+)
@@ -380,7 +382,7 @@ import signalops
 
 signalops.configure(
     api_key="sk_live_your_api_key_here",
-    base_url="https://signal-omega-tan.vercel.app",  # Optional
+    base_url="${SIGNAL_BASE_URL}",  # Optional
     dev_mode=False,  # Optional: Enable debug logging
     auto_enrich=True  # Optional: Auto-add environment metadata (default: True)
 )
@@ -872,7 +874,7 @@ except Exception as e:
 
 **Checklist:**
 - ✓ API key is correct (starts with \`sk_live_\`)
-- ✓ Base URL is \`https://signal-omega-tan.vercel.app\` (or your self-hosted URL)
+- ✓ Base URL is \`${SIGNAL_BASE_URL}\` (or your self-hosted URL)
 - ✓ You're viewing the correct organization in the dashboard
 - ✓ Your code is actually calling \`escalate()\` (add a \`print()\` to verify)
 - ✓ No exceptions are being thrown (wrap in try/except to check)
@@ -1332,7 +1334,7 @@ Configure Signal globally. Call this once at the start of your application.
 \`\`\`python
 signalops.configure(
     api_key="sk_live_your_api_key_here",
-    base_url="https://signal-omega-tan.vercel.app",  # Optional
+    base_url="${SIGNAL_BASE_URL}",  # Optional
     dev_mode=False,  # Optional: Enable debug logging
     auto_enrich=True  # Optional: Auto-add environment metadata (default: True)
 )
@@ -2036,7 +2038,7 @@ Visit ${DASHBOARD_URL} for more information.
                 <div style={{ marginBottom: "3rem" }}>
                   <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.5rem", color: "#0d0d0b" }}>signalops.configure()</h3>
                   <p style={{ marginBottom: "1rem", color: "#4a4a47", fontSize: "1.0625rem" }}>Configure Signal globally. Call this once at the start of your application.</p>
-                  <CodeBlock language="python" code={'signalops.configure(\n    api_key="sk_live_your_api_key_here",\n    base_url="https://signal-omega-tan.vercel.app",  # Optional\n    dev_mode=False,  # Optional: Enable debug logging\n    auto_enrich=True  # Optional: Auto-add environment metadata (default: True)\n)'} />
+                  <CodeBlock language="python" code={`signalops.configure(\n    api_key="sk_live_your_api_key_here",\n    base_url="${SIGNAL_BASE_URL}",  # Optional\n    dev_mode=False,  # Optional: Enable debug logging\n    auto_enrich=True  # Optional: Auto-add environment metadata (default: True)\n)`} />
                   <div style={{ marginTop: "1.5rem" }}>
                     <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem", color: "#0d0d0b" }}>Parameters:</h4>
                     <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.8, color: "#4a4a47", fontSize: "1.0625rem" }}>

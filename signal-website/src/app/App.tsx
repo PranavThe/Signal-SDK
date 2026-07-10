@@ -174,6 +174,9 @@ export default function App() {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [activeLoop, setActiveLoop] = useState(0);
+  const dashboardHref = "/dashboard";
+  const dashboardDisplayUrl =
+    typeof window !== "undefined" ? `${window.location.origin}/dashboard` : "/dashboard";
 
   /* Form ref for scrolling */
   const formRef = useRef<HTMLDivElement>(null);
@@ -242,9 +245,7 @@ export default function App() {
             </motion.div>
           </Link>
           <motion.a
-            href="https://signal-omega-tan.vercel.app/dashboard"
-            target="_blank"
-            rel="noopener noreferrer"
+            href={dashboardHref}
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
             className="text-sm font-medium text-foreground hover:opacity-70 transition-opacity"
@@ -324,7 +325,7 @@ export default function App() {
                 className="ml-2 min-w-0 flex-1 truncate px-3 py-1 text-[10px] rounded-sm sm:ml-4 sm:text-xs"
                 style={{ fontFamily: "'Geist Mono', monospace", color: "#6a6a67", background: "#efefed" }}
               >
-                https://signal-omega-tan.vercel.app/dashboard
+                {dashboardDisplayUrl}
               </div>
             </div>
 

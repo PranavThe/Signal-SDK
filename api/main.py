@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -19,18 +20,41 @@ from api.routers import admin, check, context, escalations, guard, lifecycle, ru
 from api.services.lifecycle_service import run_consolidation, run_staleness_check
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+API_STATIC_DIR = PROJECT_ROOT / "api" / "static"
+API_TEMPLATE_DIR = PROJECT_ROOT / "api" / "templates"
+WEBSITE_DIST_DIR = PROJECT_ROOT / "signal-website" / "dist"
+WEBSITE_ASSETS_DIR = WEBSITE_DIST_DIR / "assets"
+BACKEND_PATH_PREFIXES = {
+    "admin",
+    "api-docs",
+    "api-redoc",
+    "dashboard",
+    "health",
+    "login",
+    "openapi.json",
+    "slack",
+    "static",
+    "stripe",
+    "v1",
+}
+
 app = FastAPI(
     title="Signal",
     description="Operational intelligence for AI agent escalations.",
     version="0.1.0",
+    docs_url="/api-docs",
+    redoc_url="/api-redoc",
 )
 scheduler = AsyncIOScheduler(timezone=ZoneInfo(settings.app_timezone))
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-app.mount("/static", StaticFiles(directory="api/static"), name="static")
-templates = Jinja2Templates(directory="api/templates")
+app.mount("/static", StaticFiles(directory=str(API_STATIC_DIR)), name="static")
+if WEBSITE_ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(WEBSITE_ASSETS_DIR)), name="website-assets")
+templates = Jinja2Templates(directory=str(API_TEMPLATE_DIR))
 
 app.include_router(escalations.router)
 app.include_router(guard.router)
@@ -94,3 +118,37 @@ async def stop_scheduler() -> None:
 async def health() -> dict[str, str]:
     _ = settings
     return {"status": "ok"}
+
+
+def _serve_website_file(path: str) -> FileResponse:
+    if not WEBSITE_DIST_DIR.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Website build not found")
+
+    requested = (WEBSITE_DIST_DIR / path).resolve()
+    dist_root = WEBSITE_DIST_DIR.resolve()
+    try:
+        requested.relative_to(dist_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+
+    if requested.is_file():
+        return FileResponse(requested)
+
+    index_file = WEBSITE_DIST_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Website build not found")
+
+
+@app.get("/", include_in_schema=False)
+async def website_root() -> FileResponse:
+    return _serve_website_file("index.html")
+
+
+@app.get("/{website_path:path}", include_in_schema=False)
+async def website_fallback(website_path: str) -> FileResponse:
+    first_segment = website_path.split("/", 1)[0]
+    if first_segment in BACKEND_PATH_PREFIXES:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return _serve_website_file(website_path)
