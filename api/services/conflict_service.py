@@ -188,11 +188,21 @@ def _rules_can_overlap(rule_a: Rule, rule_b: Rule) -> bool:
     for condition in rule_b.structured_conditions:
         conditions_by_field.setdefault(str(condition.get("field")), []).append(condition)
 
+    # Track if we found any overlapping fields to check
+    found_any_overlap_check = False
+
     for condition_a in rule_a.structured_conditions:
         field = str(condition_a.get("field"))
         for condition_b in conditions_by_field.get(field, []):
+            found_any_overlap_check = True  # Found at least one field to compare
             if not _conditions_overlap(condition_a, condition_b):
                 return False
+
+    # CRITICAL FIX: If rules have zero overlapping fields, they can't overlap
+    # Example: Rule 1 checks "transfer.amount", Rule 2 checks "card.intent"
+    # These are completely different situations and should not conflict
+    if not found_any_overlap_check:
+        return False
 
     return True
 
