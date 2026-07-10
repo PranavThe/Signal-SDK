@@ -1,5 +1,6 @@
 {
   "buildCommand": "cd signal-website && npm install && npm run build",
+  "outputDirectory": "signal-website/dist",
   "functions": {
     "api/index.py": {
       "maxDuration": 60
