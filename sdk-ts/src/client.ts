@@ -46,6 +46,27 @@ export interface CheckResult {
   contextWarnings: string[];
 }
 
+export interface GuardActionParams {
+  action: string;
+  context: Record<string, unknown>;
+  agentId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface GuardDecision {
+  decision: "allow" | "block" | "modify" | "escalate" | string;
+  allowed: boolean;
+  prescribedAction: string;
+  customerResponse: string | null;
+  internalReason: string;
+  ruleId: string | null;
+  confidence: number | null;
+  requiresHuman: boolean;
+  handoff: Record<string, unknown> | null;
+  modification: Record<string, unknown> | null;
+  contextWarnings: string[];
+}
+
 type EscalationState = {
   event?: string;
   escalation_id?: string;
@@ -427,6 +448,67 @@ export class Signal {
       result: data.result,
       ruleId: data.rule_id,
       reasoning: data.reasoning,
+      modification: data.modification,
+      contextWarnings: allWarnings,
+    };
+  }
+
+  async guardAction(params: GuardActionParams): Promise<GuardDecision> {
+    const enrichedContext = this.enrichContext(params.context);
+    const { normalizedContext, warnings } = normalizeContext(enrichedContext, this.schema);
+
+    if (this.schema) {
+      (normalizedContext as Record<string, unknown>)._signal_schema = this.schema.map((field) => ({
+        name: field.name,
+        type: field.type,
+        description: field.description ?? "",
+      }));
+    }
+
+    const agentId = params.agentId ?? "default";
+    this.log(`Guarding action: action=${params.action}, agentId=${agentId}`);
+    this.log(`Normalized context: ${JSON.stringify(normalizedContext).substring(0, 200)}...`);
+
+    const response = await fetch(`${this.baseUrl}/v1/guard`, {
+      method: "POST",
+      headers: this.jsonHeaders(),
+      body: JSON.stringify({
+        action: params.action,
+        agent_id: agentId,
+        context: normalizedContext,
+        metadata: params.metadata ?? {},
+      }),
+    });
+    await this.assertOk(response);
+    const data = (await response.json()) as {
+      decision: string;
+      allowed: boolean;
+      prescribed_action: string;
+      customer_response: string | null;
+      internal_reason: string;
+      rule_id: string | null;
+      confidence: number | null;
+      requires_human: boolean;
+      handoff: Record<string, unknown> | null;
+      modification: Record<string, unknown> | null;
+      context_warnings?: string[];
+    };
+
+    const allWarnings = [...warnings, ...(data.context_warnings ?? [])];
+    if (allWarnings.length > 0) {
+      this.log(`Guard returned ${allWarnings.length} context warnings`);
+    }
+
+    return {
+      decision: data.decision,
+      allowed: data.allowed,
+      prescribedAction: data.prescribed_action,
+      customerResponse: data.customer_response,
+      internalReason: data.internal_reason,
+      ruleId: data.rule_id,
+      confidence: data.confidence,
+      requiresHuman: data.requires_human,
+      handoff: data.handoff,
       modification: data.modification,
       contextWarnings: allWarnings,
     };

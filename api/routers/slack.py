@@ -23,6 +23,7 @@ from api.services.conflict_service import ConflictService
 from api.services.context_schema_service import ContextSchemaService
 from api.services.embedding_service import embed, save_rule_embedding
 from api.services.extraction_service import ExtractionService
+from api.services.guard_decision_service import prescribed_action_for_rule, validate_rule_outcome_for_activation
 from api.services.lifecycle_service import run_consolidation
 from api.services.redis_service import publish_escalation_response
 from api.services.resolution_propagator import propagate_rule
@@ -135,6 +136,7 @@ async def _publish_final_escalation_result(escalation: Escalation) -> None:
             "human_decision": escalation.human_decision,
             "rule_id": str(escalation.rule_id) if escalation.rule_id else None,
             "auto_resolved": escalation.auto_resolved,
+            "prescribed_action": escalation.prescribed_action,
             "finalized": escalation.finalized_at is not None,
             "finalization_reason": escalation.finalization_reason,
             "responded_at": escalation.responded_at,
@@ -291,6 +293,24 @@ async def process_slack_action(action_id: str, value: str) -> None:
 
             if action_id == "rule_approve":
                 rule = await _get_rule(session, value)
+                outcome_errors = validate_rule_outcome_for_activation(rule)
+                if outcome_errors:
+                    rule.status = "pending_approval"
+                    rule.updated_at = datetime.now(UTC)
+                    escalation = (
+                        await session.get(Escalation, rule.source_escalation_id)
+                        if rule.source_escalation_id
+                        else None
+                    )
+                    if escalation is not None:
+                        await slack.update_rule_proposal(
+                            escalation,
+                            rule,
+                            "blocked by missing approved customer response",
+                            include_buttons=True,
+                        )
+                    await session.commit()
+                    return
                 conflict_warnings = await _prepare_rule_semantics(session, rule)
                 if conflict_warnings:
                     rule.status = "pending_approval"
@@ -315,6 +335,10 @@ async def process_slack_action(action_id: str, value: str) -> None:
                 escalation = await session.get(Escalation, rule.source_escalation_id) if rule.source_escalation_id else None
                 if escalation is not None:
                     escalation.rule_id = rule.id
+                    escalation.prescribed_action = prescribed_action_for_rule(
+                        rule,
+                        action_name=str((rule.structured_action or {}).get("action", "proceed")),
+                    )
                     _mark_escalation_finalized(escalation, "rule_approved")
                     await slack.update_rule_proposal(escalation, rule, "approved")
                 await session.commit()

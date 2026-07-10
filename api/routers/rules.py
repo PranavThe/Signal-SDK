@@ -18,6 +18,7 @@ from api.schemas import RuleDeleteRequest, RuleStatusUpdate
 from api.services.conflict_service import ConflictService
 from api.services.context_schema_service import ContextSchemaService
 from api.services.duplicate_rule_service import DuplicateRuleService
+from api.services.guard_decision_service import validate_rule_outcome_for_activation
 from api.services.lifecycle_service import run_consolidation
 from api.services.rule_analytics_service import RuleAnalyticsService
 from api.services.rule_import_export_service import RuleImportExportService
@@ -90,6 +91,15 @@ async def update_rule_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rule not found")
 
     if request.status == "active":
+        outcome_errors = validate_rule_outcome_for_activation(rule)
+        if outcome_errors:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": "Activating this rule would violate the guard outcome contract.",
+                    "errors": outcome_errors,
+                },
+            )
         conflict_warnings = await ConflictService().detect_activation_conflicts(session, rule)
         if conflict_warnings:
             await session.flush()
@@ -281,6 +291,7 @@ async def test_rule(
         "reasoning": result.reasoning,
         "matched_conditions": result.matched_conditions,
         "unmatched_conditions": result.unmatched_conditions,
+        "guard_decision": result.guard_decision,
     }
 
 
@@ -345,6 +356,16 @@ async def bulk_update_rule_status(
         conflict_service = ConflictService()
         for rule in rules:
             if rule.status != "active":
+                outcome_errors = validate_rule_outcome_for_activation(rule)
+                if outcome_errors:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail={
+                            "message": f"Rule {rule.id} would violate the guard outcome contract",
+                            "rule_id": str(rule.id),
+                            "errors": outcome_errors,
+                        },
+                    )
                 conflict_warnings = await conflict_service.detect_activation_conflicts(session, rule)
                 if conflict_warnings:
                     raise HTTPException(

@@ -13,6 +13,8 @@ from api.services.context_schema_service import ContextSchemaService
 from api.services.embedding_service import embed, save_rule_embedding
 from api.services.escalation_pipeline import slack_delivery_available
 from api.services.extraction_service import ExtractionService
+from api.services.guard_decision_service import validate_rule_outcome_for_activation
+from api.services.guard_decision_service import prescribed_action_for_rule
 from api.services.redis_service import publish_escalation_response
 from api.services.resolution_propagator import propagate_rule
 from api.services.slack_service import SlackService
@@ -67,6 +69,7 @@ async def publish_final_escalation_result(escalation: Escalation) -> None:
             "human_decision": escalation.human_decision,
             "rule_id": str(escalation.rule_id) if escalation.rule_id else None,
             "auto_resolved": escalation.auto_resolved,
+            "prescribed_action": escalation.prescribed_action,
             "finalized": escalation.finalized_at is not None,
             "finalization_reason": escalation.finalization_reason,
             "reasoning": escalation.human_reasoning,
@@ -200,6 +203,10 @@ async def approve_rule(
     session: AsyncSession,
     rule: Rule,
 ) -> tuple[bool, list[ConflictWarning], Escalation | None]:
+    outcome_errors = validate_rule_outcome_for_activation(rule)
+    if outcome_errors:
+        raise ValueError("Cannot approve rule: " + " ".join(outcome_errors))
+
     warnings = await prepare_rule_semantics(session, rule)
     escalation = await session.get(Escalation, rule.source_escalation_id) if rule.source_escalation_id else None
 
@@ -245,7 +252,10 @@ async def approve_rule(
         escalation.rule_id = rule.id
         # Set the prescribed action from the rule
         action = rule.structured_action or {}
-        escalation.prescribed_action = str(action.get("action", "proceed"))
+        escalation.prescribed_action = prescribed_action_for_rule(
+            rule,
+            action_name=str(action.get("action", "proceed")),
+        )
         mark_escalation_finalized(escalation, "rule_approved")
         if await _slack_sync_enabled(session, escalation):
             await _try_slack(SlackService().update_rule_proposal(escalation, rule, "approved"), "approve rule proposal")

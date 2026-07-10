@@ -268,6 +268,12 @@ def _merge_structured_action(rule_a: Rule, rule_b: Rule, merged_action: str) -> 
     parameters = dict(action.get("parameters") or {})
     parameters["merged_action_description"] = merged_action
     action["parameters"] = parameters
+    if isinstance(action.get("outcome"), dict):
+        outcome = dict(action["outcome"])
+        outcome_parameters = dict(outcome.get("parameters") or {})
+        outcome_parameters["merged_action_description"] = merged_action
+        outcome["parameters"] = outcome_parameters
+        action["outcome"] = outcome
     return action
 
 

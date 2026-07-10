@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.models import Rule
+from api.rule_engine import action_signature
 from api.services.semantic_service import find_similar_rules
 
 logger = logging.getLogger(__name__)
@@ -138,7 +139,7 @@ class DuplicateRuleService:
 
     def _same_action(self, rule_a: Rule, rule_b: Rule) -> bool:
         """Check if two rules have the same action."""
-        return rule_a.structured_action.get("decision") == rule_b.structured_action.get("decision")
+        return action_signature(rule_a) == action_signature(rule_b)
 
     def _generate_similarity_explanation(self, similarity: float) -> str:
         """Generate a human-readable explanation based on similarity score."""

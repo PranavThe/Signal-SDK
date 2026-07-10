@@ -9,6 +9,54 @@ import httpx
 from api.config import settings
 from api.models import Escalation, Rule
 from api.schemas import ExtractedRule
+from api.services.guard_decision_service import OUTCOME_SCHEMA_VERSION, normalize_guard_decision
+
+
+OUTCOME_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "schema_version": {
+            "type": "string",
+            "enum": [OUTCOME_SCHEMA_VERSION],
+            "description": "Version of the Signal guard outcome contract.",
+        },
+        "decision": {
+            "type": "string",
+            "enum": ["allow", "block", "modify", "escalate"],
+            "description": "The guard decision apps should branch on.",
+        },
+        "prescribed_action": {
+            "type": "string",
+            "description": "Stable machine-readable action id, e.g. block_wire_transfer_and_explain_limit.",
+        },
+        "customer_response_template": {
+            "type": "string",
+            "description": (
+                "Approved customer-safe text template. Required for block, modify, and escalate outcomes. "
+                "Use {fact_name} placeholders only for values included in facts."
+            ),
+        },
+        "facts": {
+            "type": "object",
+            "description": "Approved variables available to customer_response_template.",
+        },
+        "handoff": {
+            "type": "object",
+            "description": "Optional handoff destination such as team, queue, phone, or email.",
+        },
+        "parameters": {
+            "type": "object",
+            "description": "Optional machine-readable parameters for modify or downstream handling.",
+        },
+    },
+    "required": [
+        "schema_version",
+        "decision",
+        "prescribed_action",
+        "customer_response_template",
+        "facts",
+    ],
+}
 
 
 EXTRACTION_TOOL = {
@@ -48,8 +96,9 @@ EXTRACTION_TOOL = {
                         "enum": ["proceed", "block", "escalate", "modify"],
                     },
                     "parameters": {"type": "object"},
+                    "outcome": OUTCOME_SCHEMA,
                 },
-                "required": ["action"],
+                "required": ["action", "outcome"],
             },
             "confidence": {
                 "type": "number",
@@ -105,8 +154,9 @@ REVISION_TOOL = {
                         "enum": ["proceed", "block", "escalate", "modify"],
                     },
                     "parameters": {"type": "object"},
+                    "outcome": OUTCOME_SCHEMA,
                 },
-                "required": ["action"],
+                "required": ["action", "outcome"],
             },
             "confidence": {
                 "type": "number",
@@ -137,7 +187,13 @@ generalizable operational rule from it.
 Be conservative. It is far better to extract a narrow, accurate rule
 than a broad, incorrect one. Only generalize along dimensions that are
 clearly relevant to the human's decision. Use only the metadata fields
-that were actually provided."""
+that were actually provided.
+
+Always include structured_action.outcome. The outcome is what Signal's
+guard API returns to applications, so it must be deterministic and
+customer-safe. For block, modify, or escalate outcomes, include an
+approved customer_response_template. Do not write freeform runtime
+instructions that require the application to interpret reasoning."""
 
 
 def _block_type(block: Any) -> str | None:
@@ -156,6 +212,24 @@ def _block_input(block: Any) -> dict[str, Any] | None:
     if isinstance(block, dict):
         return block.get("input")
     return getattr(block, "input", None)
+
+
+def _normalize_extracted_action(tool_input: dict[str, Any]) -> None:
+    structured_action = tool_input.setdefault("structured_action", {})
+    action = str(structured_action.get("action") or "proceed")
+    structured_action["action"] = action
+    structured_action.setdefault("parameters", {})
+
+    outcome = structured_action.setdefault("outcome", {})
+    decision = normalize_guard_decision(outcome.get("decision") or action)
+    outcome["schema_version"] = OUTCOME_SCHEMA_VERSION
+    outcome["decision"] = decision
+    outcome.setdefault("prescribed_action", "proceed" if decision == "allow" else action)
+    outcome.setdefault("customer_response_template", "")
+    outcome.setdefault("facts", {})
+    outcome.setdefault("parameters", structured_action.get("parameters") or {})
+    if outcome.get("handoff") is None:
+        outcome.pop("handoff", None)
 
 
 class ExtractionService:
@@ -187,8 +261,7 @@ HUMAN DECISION: {escalation.human_decision}"""
                 tool_input = _block_input(block)
                 if tool_input is None:
                     break
-                structured_action = tool_input.setdefault("structured_action", {})
-                structured_action.setdefault("parameters", {})
+                _normalize_extracted_action(tool_input)
                 # Force exceptions to always be blank on initial extraction - user will add manually if needed
                 tool_input["exceptions_note"] = ""
                 return ExtractedRule.model_validate(tool_input)
@@ -233,8 +306,7 @@ Revise the rule to incorporate the human's requested edit. Preserve the original
                 tool_input = _block_input(block)
                 if tool_input is None:
                     break
-                structured_action = tool_input.setdefault("structured_action", {})
-                structured_action.setdefault("parameters", {})
+                _normalize_extracted_action(tool_input)
                 # Preserve existing exceptions if LLM didn't update them
                 tool_input.setdefault("exceptions_note", rule.exceptions_note)
                 return ExtractedRule.model_validate(tool_input)

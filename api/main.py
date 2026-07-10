@@ -15,7 +15,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from api.config import settings
 from api.dashboard_auth import clear_dashboard_cookies
 from api.rate_limit import limiter
-from api.routers import admin, check, context, escalations, lifecycle, rules, slack
+from api.routers import admin, check, context, escalations, guard, lifecycle, rules, slack
 from api.services.lifecycle_service import run_consolidation, run_staleness_check
 
 
@@ -33,6 +33,7 @@ app.mount("/static", StaticFiles(directory="api/static"), name="static")
 templates = Jinja2Templates(directory="api/templates")
 
 app.include_router(escalations.router)
+app.include_router(guard.router)
 app.include_router(check.router)
 app.include_router(rules.router)
 app.include_router(context.router)

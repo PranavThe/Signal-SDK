@@ -7,6 +7,7 @@ from signal_sdk.client import (
     CheckResult,
     EscalationResult,
     Field,
+    GuardDecision,
     Signal,
     builtin_context_aliases,
     canonicalize_field_name,
@@ -15,7 +16,7 @@ from signal_sdk.client import (
 
 
 DEFAULT_BASE_URL = "https://signal-omega-tan.vercel.app"
-__version__ = "0.2.2"
+__version__ = "0.3.0"
 
 _api_key: str | None = None
 _base_url: str | None = None
@@ -95,6 +96,22 @@ async def check(
     )
 
 
+async def guard_action(
+    action: str,
+    context: dict[str, Any],
+    agent_id: str = "default",
+    metadata: dict[str, Any] | None = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
+) -> GuardDecision:
+    return await client(api_key=api_key, base_url=base_url).guard_action(
+        action=action,
+        context=context,
+        agent_id=agent_id,
+        metadata=metadata,
+    )
+
+
 # Re-export exceptions
 from signalops.exceptions import (  # noqa: E402
     SignalAuthError,
@@ -107,6 +124,7 @@ __all__ = [
     "CheckResult",
     "EscalationResult",
     "Field",
+    "GuardDecision",
     "Signal",
     "SignalAuthError",
     "SignalError",
@@ -119,5 +137,6 @@ __all__ = [
     "client",
     "configure",
     "escalate",
+    "guard_action",
     "normalize_context",
 ]

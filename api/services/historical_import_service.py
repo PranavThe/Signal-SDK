@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.config import settings
 from api.models import HistoricalDecisionImport, HistoricalRuleProposal, Rule
 from api.services.context_schema_service import ContextSchemaService, flatten_context
+from api.services.guard_decision_service import OUTCOME_SCHEMA_VERSION, SAFE_REVIEW_RESPONSE, normalize_guard_decision
 
 
 logger = logging.getLogger(__name__)
@@ -41,13 +42,47 @@ def _decision_from_record(record: dict[str, Any]) -> str:
 
 def _action_from_decision(decision: str, record: dict[str, Any]) -> dict[str, Any]:
     text = decision.lower()
-    if any(token in text for token in ("reject", "block", "deny", "skip", "false", "no")):
-        return {"action": "block", "parameters": {}}
+    is_block = any(token in text for token in ("reject", "block", "deny", "skip", "false", "no"))
     if "modify" in text:
-        return {"action": "modify", "parameters": {}}
-    if "escalate" in text:
-        return {"action": "escalate", "parameters": {}}
-    return {"action": "proceed", "parameters": {}}
+        action = "modify"
+    elif "escalate" in text:
+        action = "escalate"
+    elif is_block:
+        action = "block"
+    else:
+        action = "proceed"
+
+    return _ensure_guard_outcome({"action": action, "parameters": {}})
+
+
+def _default_customer_template(guard_decision: str) -> str:
+    if guard_decision == "block":
+        return "I cannot complete this request under the current policy."
+    if guard_decision == "modify":
+        return "I can continue with an adjusted version of this request."
+    if guard_decision == "escalate":
+        return SAFE_REVIEW_RESPONSE
+    return ""
+
+
+def _ensure_guard_outcome(action_payload: dict[str, Any]) -> dict[str, Any]:
+    action = str(action_payload.get("action") or "proceed")
+    action_payload["action"] = action
+    action_payload.setdefault("parameters", {})
+    existing_outcome = action_payload.get("outcome")
+    outcome = dict(existing_outcome) if isinstance(existing_outcome, dict) else {}
+    guard_decision = normalize_guard_decision(outcome.get("decision") or action)
+
+    outcome["schema_version"] = OUTCOME_SCHEMA_VERSION
+    outcome["decision"] = guard_decision
+    if not str(outcome.get("prescribed_action") or "").strip():
+        outcome["prescribed_action"] = "proceed" if guard_decision == "allow" else action
+    if not str(outcome.get("customer_response_template") or "").strip():
+        outcome["customer_response_template"] = _default_customer_template(guard_decision)
+    outcome.setdefault("facts", {})
+    outcome.setdefault("parameters", action_payload.get("parameters") or {})
+    action_payload["outcome"] = outcome
+    return action_payload
 
 
 def _context_from_record(record: dict[str, Any]) -> dict[str, Any]:
@@ -152,7 +187,7 @@ class HistoricalImportService:
                     action_description=proposal["action_description"],
                     exceptions_note=proposal.get("exceptions_note", ""),
                     structured_conditions=conditions,
-                    structured_action=proposal["structured_action"],
+                    structured_action=_ensure_guard_outcome(proposal["structured_action"]),
                     confidence=float(proposal.get("confidence") or 0.0),
                     evidence_count=int(proposal.get("evidence_count") or 0),
                     evidence=proposal.get("evidence") or [],
@@ -207,7 +242,18 @@ Return JSON only:
       "structured_conditions": [
         {{"field": "canonical.field", "operator": "eq", "value": "example"}}
       ],
-      "structured_action": {{"action": "proceed|block|escalate|modify", "parameters": {{}}}},
+      "structured_action": {{
+        "action": "proceed|block|escalate|modify",
+        "parameters": {{}},
+        "outcome": {{
+          "schema_version": "{OUTCOME_SCHEMA_VERSION}",
+          "decision": "allow|block|modify|escalate",
+          "prescribed_action": "stable_machine_action_id",
+          "customer_response_template": "approved customer-safe template, required unless decision is allow",
+          "facts": {{}},
+          "parameters": {{}}
+        }}
+      }},
       "confidence": 0.0,
       "evidence_count": 12,
       "evidence": [{{"decision": "...", "context": {{}}}}]

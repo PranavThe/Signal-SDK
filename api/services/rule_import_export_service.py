@@ -120,7 +120,7 @@ class RuleImportExportService:
                 rule.condition_description,
                 rule.action_description,
                 rule.exceptions_note,
-                rule.structured_action.get("decision", ""),
+                rule.structured_action.get("action", ""),
                 rule.status,
                 rule.extraction_confidence,
                 rule.trigger_count,

@@ -21,6 +21,7 @@ from api.services.context_schema_service import ContextSchemaService, context_fr
 from api.services.context_service import ContextValidator
 from api.services.embedding_service import embed
 from api.services.escalation_pipeline import prepare_escalation_semantics, prepare_escalation_slack_card
+from api.services.guard_decision_service import prescribed_action_for_rule
 from api.services.redis_service import publish_escalation_created, publish_escalation_response, subscribe_escalation_events
 from api.services.semantic_service import find_semantic_rule_match, semantic_policy_text
 from api.services.webhook_service import send_webhook_event_by_org_id
@@ -195,7 +196,7 @@ async def create_escalation(
 
         escalation.status = "responded"
         escalation.human_decision = _action_to_human_decision(prescribed_action_value)
-        escalation.prescribed_action = prescribed_action_value
+        escalation.prescribed_action = prescribed_action_for_rule(matched_rule, action_name=prescribed_action_value)
         escalation.rule_id = matched_rule.id
         escalation.auto_resolved = True
 
@@ -279,6 +280,7 @@ async def create_escalation(
         webhook_data.update({
             "human_decision": escalation.human_decision,
             "rule_id": str(escalation.rule_id) if escalation.rule_id else None,
+            "prescribed_action": escalation.prescribed_action,
             "auto_resolved": escalation.auto_resolved,
             "finalized": True,
             "finalization_reason": escalation.finalization_reason,

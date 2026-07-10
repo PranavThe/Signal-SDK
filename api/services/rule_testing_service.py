@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.models import Rule
+from api.services.guard_decision_service import allow_guard_decision, decision_payload, guard_decision_from_rule
 from api.services.context_schema_service import ContextSchemaService, builtin_context_aliases, canonicalize_scalar_field
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ class RuleTestResult:
     reasoning: str
     matched_conditions: list[dict[str, Any]]
     unmatched_conditions: list[dict[str, Any]]
+    guard_decision: dict[str, Any]
 
 
 class RuleTestingService:
@@ -63,7 +65,7 @@ class RuleTestingService:
         reasoning_parts = []
 
         if all_conditions_matched:
-            action = rule.structured_action.get("decision")
+            action = rule.structured_action.get("action")
             reasoning_parts.append(f"All {len(matched_conditions)} condition(s) matched:")
             for i, cond in enumerate(matched_conditions, 1):
                 field = cond.get("field", "unknown")
@@ -89,6 +91,21 @@ class RuleTestingService:
                     context_value = self._get_nested_value(normalized_context, field)
                     reasoning_parts.append(f"  {i}. {field} {operator} {value} (actual: {context_value})")
 
+        action_name = str((rule.structured_action or {}).get("action") or "proceed")
+        if all_conditions_matched:
+            guard_decision = guard_decision_from_rule(
+                rule,
+                action_name=action_name,
+                internal_reason=f"Rule test matched: {rule.action_description}",
+                context=normalized_context,
+                context_warnings=context_result.warnings,
+            )
+        else:
+            guard_decision = allow_guard_decision(
+                internal_reason="Rule test did not match. No applicable rule found.",
+                context_warnings=context_result.warnings,
+            )
+
         return RuleTestResult(
             rule_id=str(rule.id),
             condition_description=rule.condition_description,
@@ -99,6 +116,7 @@ class RuleTestingService:
             reasoning="\n".join(reasoning_parts),
             matched_conditions=matched_conditions,
             unmatched_conditions=unmatched_conditions,
+            guard_decision=decision_payload(guard_decision),
         )
 
     def _evaluate_condition(self, context: dict[str, Any], condition: dict[str, Any]) -> bool:

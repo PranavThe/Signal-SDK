@@ -11,6 +11,7 @@ from api.models import Escalation, Organization, Rule
 from api.rule_engine import rule_applies_to_agent, rule_matches
 from api.services.redis_service import publish_escalation_response
 from api.services.escalation_pipeline import slack_delivery_available
+from api.services.guard_decision_service import prescribed_action_for_rule
 from api.services.slack_service import SlackService
 from api.services.webhook_service import send_webhook_event_by_org_id
 
@@ -76,6 +77,10 @@ async def propagate_rule(rule_id: str | UUID, org_id: str | UUID | None) -> dict
                 action = rule.structured_action or {}
                 escalation.status = "responded"
                 escalation.human_decision = _action_to_human_decision(str(action.get("action", "proceed")))
+                escalation.prescribed_action = prescribed_action_for_rule(
+                    rule,
+                    action_name=str(action.get("action", "proceed")),
+                )
                 escalation.rule_id = rule.id
                 escalation.auto_resolved = True
                 escalation.human_reasoning = _resolution_reason(rule)
@@ -108,6 +113,7 @@ async def propagate_rule(rule_id: str | UUID, org_id: str | UUID | None) -> dict
                         "human_decision": escalation.human_decision,
                         "rule_id": str(escalation.rule_id) if escalation.rule_id else None,
                         "auto_resolved": escalation.auto_resolved,
+                        "prescribed_action": escalation.prescribed_action,
                         "finalized": escalation.finalized_at is not None,
                         "finalization_reason": escalation.finalization_reason,
                         "reasoning": escalation.human_reasoning,

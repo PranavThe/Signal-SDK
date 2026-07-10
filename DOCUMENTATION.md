@@ -561,6 +561,43 @@ async def handle_fraud_report(transaction):
 
 Action prescription turns every human decision into permanent operational intelligence about what your company does in each situation.
 
+### guard_action()
+
+Guard a risky action and receive the exact typed outcome the app should use:
+
+```python
+decision = await signalops.guard_action(
+    action="waive_fee",
+    context={
+        "customer_message": message,
+        "amount": amount,
+        "channel": "chat",
+    },
+    agent_id="support-agent",
+)
+
+if decision.allowed:
+    waive_fee()
+else:
+    return decision.customer_response
+```
+
+**Returns:**
+
+- `decision` (str): `"allow"`, `"block"`, `"modify"`, or `"escalate"`
+- `allowed` (bool): Whether the original action can run unchanged
+- `prescribed_action` (str): Stable machine-readable action id
+- `customer_response` (str|None): Approved customer-safe response from the matched rule
+- `internal_reason` (str): Audit/debug explanation
+- `rule_id` (str|None): Matching rule id
+- `confidence` (float|None): Rule extraction confidence
+- `requires_human` (bool): Whether the next step needs review
+- `handoff` (dict|None): Optional team/queue/contact details
+- `modification` (dict|None): Parameters for modify outcomes
+- `context_warnings` (list[str]): Context normalization warnings
+
+Use `guard_action()` for app-facing enforcement. Use `escalate()` when the agent is uncertain and you want a human decision to create learning data.
+
 ### check()
 
 Check if an action should be allowed based on existing rules (without escalating):

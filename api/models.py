@@ -335,7 +335,9 @@ class PolicyCheckLog(Base):
     result: Mapped[str] = mapped_column(Text, nullable=False)
     org_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"))
     rule_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("rules.id"))
+    escalation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("escalations.id"))
     reasoning: Mapped[str] = mapped_column(Text, nullable=False)
+    decision_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     cache_hit: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

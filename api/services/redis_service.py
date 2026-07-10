@@ -65,6 +65,7 @@ async def publish_escalation_response(escalation: Escalation) -> bool:
             "auto_resolved": escalation.auto_resolved,
             "finalized": escalation.finalized_at is not None,
             "finalization_reason": escalation.finalization_reason,
+            "action": escalation.prescribed_action,
             "reasoning": escalation.human_reasoning,
             "responded_at": escalation.responded_at,
         },

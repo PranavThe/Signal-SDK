@@ -69,6 +69,8 @@ from api.services.billing_service import (
 from api.services.conflict_service import ConflictService, ConflictWarning
 from api.services.context_schema_service import ContextSchemaService
 from api.services.escalation_pipeline import slack_delivery_available
+from api.services.guard_decision_service import validate_rule_outcome_for_activation
+from api.services.guard_decision_service import decision_payload, guard_decision_from_rule
 from api.services.lifecycle_service import run_consolidation
 from api.services.review_service import (
     approve_rule,
@@ -372,6 +374,15 @@ def _rule_action(rule: Rule) -> str:
     return str(action.get("action") or "proceed")
 
 
+def _escalation_action_name(escalation: Escalation | None, rule: Rule) -> str:
+    if escalation is not None:
+        for key in ("action", "attempted_action", "agent_action"):
+            value = (escalation.metadata_ or {}).get(key)
+            if value:
+                return str(value)
+    return _rule_action(rule)
+
+
 def _dashboard_rule_payload(rule: Rule) -> dict[str, Any]:
     return {
         **_rule_payload(rule),
@@ -616,6 +627,18 @@ async def _similar_decision_payload(session: AsyncSession, escalation: Escalatio
 
 async def _review_rule_payload(session: AsyncSession, rule: Rule) -> dict[str, Any]:
     warnings = await ConflictService().load_warnings(session, rule)
+    source_escalation = await session.get(Escalation, rule.source_escalation_id) if rule.source_escalation_id else None
+    guard_decision_preview = None
+    if source_escalation is not None:
+        guard_decision_preview = decision_payload(
+            guard_decision_from_rule(
+                rule,
+                action_name=_escalation_action_name(source_escalation, rule),
+                internal_reason=f"Matched rule: {rule.action_description}",
+                context=source_escalation.normalized_context or source_escalation.metadata_ or {},
+                context_warnings=[],
+            )
+        )
     return {
         "id": str(rule.id),
         "condition": rule.condition_description,
@@ -628,6 +651,7 @@ async def _review_rule_payload(session: AsyncSession, rule: Rule) -> dict[str, A
         "created": _time_ago(rule.created_at),
         "updated": _time_ago(rule.updated_at),
         "conflicts": [_conflict_payload(warning) for warning in warnings],
+        "guard_decision_preview": guard_decision_preview,
     }
 
 
@@ -1613,7 +1637,10 @@ async def dashboard_approve_rule(
 ) -> dict[str, Any]:
     _ = dashboard_user
     rule = await _get_org_rule(session, rule_id, auth.org_id)
-    approved, warnings, escalation = await approve_rule(session, rule)
+    try:
+        approved, warnings, escalation = await approve_rule(session, rule)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if not approved:
         await session.commit()
         raise HTTPException(
@@ -2009,6 +2036,15 @@ async def update_dashboard_rule_status(
     rule = await _get_org_rule(session, rule_id, auth.org_id)
 
     if request.status == "active":
+        outcome_errors = validate_rule_outcome_for_activation(rule)
+        if outcome_errors:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": "Activating this rule would violate the guard outcome contract.",
+                    "errors": outcome_errors,
+                },
+            )
         conflict_warnings = await ConflictService().detect_activation_conflicts(session, rule)
         if conflict_warnings:
             await session.flush()
@@ -2071,6 +2107,16 @@ async def bulk_update_dashboard_rule_status(
         for rule in rules:
             if rule.status == "active":
                 continue
+            outcome_errors = validate_rule_outcome_for_activation(rule)
+            if outcome_errors:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "message": "One selected rule would violate the guard outcome contract.",
+                        "rule_id": str(rule.id),
+                        "errors": outcome_errors,
+                    },
+                )
             conflict_warnings = await conflict_service.detect_activation_conflicts(session, rule)
             if conflict_warnings:
                 await session.flush()
@@ -2320,6 +2366,7 @@ async def test_dashboard_rule(
         "reasoning": result.reasoning,
         "matched_conditions": result.matched_conditions,
         "unmatched_conditions": result.unmatched_conditions,
+        "guard_decision": result.guard_decision,
     }
 
 

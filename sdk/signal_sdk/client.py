@@ -282,6 +282,34 @@ class CheckResult:
         self.context_warnings = context_warnings or []
 
 
+class GuardDecision:
+    def __init__(
+        self,
+        decision: str,
+        allowed: bool,
+        prescribed_action: str,
+        customer_response: str | None,
+        internal_reason: str,
+        rule_id: str | None,
+        confidence: float | None,
+        requires_human: bool,
+        handoff: dict | None,
+        modification: dict | None,
+        context_warnings: list[str] | None = None,
+    ):
+        self.decision = decision
+        self.allowed = allowed
+        self.prescribed_action = prescribed_action
+        self.customer_response = customer_response
+        self.internal_reason = internal_reason
+        self.rule_id = rule_id
+        self.confidence = confidence
+        self.requires_human = requires_human
+        self.handoff = handoff
+        self.modification = modification
+        self.context_warnings = context_warnings or []
+
+
 class Signal:
     def __init__(
         self,
@@ -486,5 +514,56 @@ class Signal:
             rule_id=data["rule_id"],
             reasoning=data["reasoning"],
             modification=data["modification"],
+            context_warnings=all_warnings,
+        )
+
+    async def guard_action(
+        self,
+        action: str,
+        context: dict[str, Any],
+        agent_id: str = "default",
+        metadata: dict[str, Any] | None = None,
+    ) -> GuardDecision:
+        enriched_context = self._enrich_context(context)
+        normalized_context, local_warnings = normalize_context(enriched_context, schema=self.schema)
+
+        if self.schema:
+            normalized_context["_signal_schema"] = [
+                {"name": field.name, "type": field.type, "description": field.description}
+                for field in self.schema
+            ]
+
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self.headers, timeout=30.0) as client:
+            if self.dev_mode:
+                logger.debug(f"Guarding action: action={action}, agent_id={agent_id}")
+                logger.debug(f"Normalized context: {json.dumps(normalized_context, indent=2)[:200]}...")
+
+            response = await client.post(
+                "/v1/guard",
+                json={
+                    "action": action,
+                    "agent_id": agent_id,
+                    "context": normalized_context,
+                    "metadata": metadata or {},
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        all_warnings = [*local_warnings, *(data.get("context_warnings") or [])]
+        if all_warnings and self.dev_mode:
+            logger.debug(f"Guard returned {len(all_warnings)} context warnings")
+
+        return GuardDecision(
+            decision=data["decision"],
+            allowed=bool(data["allowed"]),
+            prescribed_action=data["prescribed_action"],
+            customer_response=data.get("customer_response"),
+            internal_reason=data["internal_reason"],
+            rule_id=data.get("rule_id"),
+            confidence=data.get("confidence"),
+            requires_human=bool(data.get("requires_human")),
+            handoff=data.get("handoff"),
+            modification=data.get("modification"),
             context_warnings=all_warnings,
         )

@@ -361,6 +361,17 @@ async def main():
     )
     print(f"Result: {check.result} - {check.reasoning}")
 
+    # Guard a risky action and use Signal's typed outcome directly
+    decision = await signalops.guard_action(
+        action="approve_deployment",
+        agent_id="deploy-agent",
+        context=context_data,
+    )
+    if decision.allowed:
+        print("Run the deployment")
+    else:
+        print(decision.customer_response)
+
 
 asyncio.run(main())
 ```
@@ -424,6 +435,18 @@ const check = await signal.check({
   agentId: "deploy-agent",
   context: contextData,  // SDK handles conversion
 });
+
+const decision = await signal.guardAction({
+  action: "approve_deployment",
+  agentId: "deploy-agent",
+  context: contextData,
+});
+
+if (decision.allowed) {
+  console.log("Run the deployment");
+} else {
+  console.log(decision.customerResponse);
+}
 ```
 
 ## Verification Checklist

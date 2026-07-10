@@ -88,6 +88,27 @@ class CheckResponse(BaseModel):
     context_warnings: list[str] = Field(default_factory=list)
 
 
+class GuardRequest(BaseModel):
+    action: str
+    context: dict[str, Any]
+    agent_id: str = Field(default="default")
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class GuardDecision(BaseModel):
+    decision: Literal["allow", "block", "modify", "escalate"]
+    allowed: bool
+    prescribed_action: str
+    customer_response: str | None = None
+    internal_reason: str
+    rule_id: UUID | None = None
+    confidence: float | None = None
+    requires_human: bool = False
+    handoff: dict[str, Any] | None = None
+    modification: dict[str, Any] | None = None
+    context_warnings: list[str] = Field(default_factory=list)
+
+
 class ExtractedRule(BaseModel):
     condition_description: str
     action_description: str
